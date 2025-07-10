@@ -12,6 +12,7 @@ enum Tool {
     Eraser,
     Bucket,
     Eyedropper,
+    Move, // Added a placeholder for a new tool
 }
 
 #[derive(Clone)]
@@ -85,6 +86,9 @@ pub struct PixelArtEditor {
     resize_width: usize,
     resize_height: usize,
     resize_anchor: usize, // 0=top-left, 1=center, 2=bottom-right
+    move_drag_start: Option<(usize, usize)>, // Track drag start for Move tool
+    move_layer_snapshot: Option<Vec<Vec<egui::Color32>>>, // Store original grid for Move tool
+    move_last_offset: Option<(isize, isize)>, // Store last applied offset for Move tool
 }
 
 impl Default for PixelArtEditor {
@@ -135,6 +139,9 @@ impl Default for PixelArtEditor {
             resize_width: 16,
             resize_height: 16,
             resize_anchor: 1, // Center by default
+            move_drag_start: None,
+            move_layer_snapshot: None,
+            move_last_offset: None,
         }
     }
 }
@@ -239,6 +246,7 @@ impl PixelArtEditor {
             Tool::Eraser => "🧽",
             Tool::Bucket => "🪣",
             Tool::Eyedropper => "👁",
+            Tool::Move => "↔", // Added icon for Move tool
         }
     }
 
@@ -248,6 +256,7 @@ impl PixelArtEditor {
             Tool::Eraser => "Eraser",
             Tool::Bucket => "Bucket",
             Tool::Eyedropper => "Eyedropper",
+            Tool::Move => "Move", // Added name for Move tool
         }
     }
 
@@ -323,6 +332,22 @@ impl PixelArtEditor {
                 layer.grid = new_grid;
             }
         }
+    }
+
+    fn shift_layer_grid(grid: &Vec<Vec<egui::Color32>>, dx: isize, dy: isize) -> Vec<Vec<egui::Color32>> {
+        let height = grid.len();
+        let width = if height > 0 { grid[0].len() } else { 0 };
+        let mut new_grid = vec![vec![egui::Color32::TRANSPARENT; width]; height];
+        for y in 0..height {
+            for x in 0..width {
+                let nx = x as isize - dx;
+                let ny = y as isize - dy;
+                if nx >= 0 && nx < width as isize && ny >= 0 && ny < height as isize {
+                    new_grid[y][x] = grid[ny as usize][nx as usize];
+                }
+            }
+        }
+        new_grid
     }
 }
 
@@ -485,7 +510,7 @@ impl eframe::App for PixelArtEditor {
                             ui.label("Tools");
                             ui.horizontal(|ui| {
                                 for tool in
-                                    [Tool::Pencil, Tool::Eraser, Tool::Bucket, Tool::Eyedropper]
+                                    [Tool::Pencil, Tool::Eraser, Tool::Bucket, Tool::Eyedropper, Tool::Move] // Added Move tool
                                 {
                                     let selected = self.tool == tool;
                                     let response = ui
@@ -709,7 +734,8 @@ impl eframe::App for PixelArtEditor {
                     // Current colors with better UI
                     egui::Frame::group(ui.style())
                         .fill(ui.style().visuals.extreme_bg_color)
-                        .corner_radius(5.0) // Changed from rounding to corner_radius
+                        .corner_radius(5.0 // Changed from rounding to corner_radius
+                        )
                         .inner_margin(8.0)
                         .outer_margin(5.0)
                         .show(ui, |ui| {
@@ -892,72 +918,67 @@ impl eframe::App for PixelArtEditor {
                                 );
                             }
 
-                            // Handle pixel interaction - Fix Aseprite-like behavior
+                            // Handle pixel interaction
                             let interact_rect =
                                 ui.allocate_rect(pixel_rect, egui::Sense::click_and_drag());
                             let pointer = ui.input(|i| i.pointer.clone());
                             let alt = ui.input(|i| i.modifiers.alt);
 
-                            // Handle drawing - Aseprite-like tool behavior
-                            if interact_rect.hovered() && pointer.primary_down() {
-                                if alt || self.tool == Tool::Eyedropper {
-                                    // Eyedropper tool
-                                    self.selected_color = composed[y][x];
-                                } else {
-                                    // Only push_undo once per stroke
-                                    if interact_rect.clicked() && !undo_pushed {
-                                        self.push_undo();
-                                        undo_pushed = true;
-                                    }
-
-                                    let brush = self.brush_size;
-                                    let min_y = y.saturating_sub(brush / 2);
-                                    let min_x = x.saturating_sub(brush / 2);
-                                    let max_y = (y + brush / 2).min(height - 1);
-                                    let max_x = (x + brush / 2).min(width - 1);
-
-                                    for by in min_y..=max_y {
-                                        for bx in min_x..=max_x {
-                                            match self.tool {
-                                                Tool::Pencil => {
-                                                    self.get_active_layer_mut().grid[by][bx] =
-                                                        self.selected_color;
-                                                }
-                                                Tool::Eraser => {
-                                                    self.get_active_layer_mut().grid[by][bx] =
-                                                        egui::Color32::TRANSPARENT;
-                                                }
-                                                Tool::Bucket => {
-                                                    // Only fill on click, not drag
-                                                    if interact_rect.clicked() {
-                                                        let original_color =
-                                                            self.get_active_layer().grid[by][bx];
-                                                        if original_color != self.selected_color {
-                                                            self.flood_fill(
-                                                                bx,
-                                                                by,
-                                                                original_color,
-                                                                self.selected_color,
-                                                            );
-                                                        }
-                                                    }
-                                                }
-                                                Tool::Eyedropper => {
-                                                    self.selected_color = composed[by][bx];
-                                                }
-                                            }
+                            // Move tool drag logic
+                            if self.tool == Tool::Move {
+                                if interact_rect.drag_started() {
+                                    // Start drag: store start position and snapshot
+                                    self.move_drag_start = Some((x, y));
+                                    self.move_layer_snapshot = Some(self.get_active_layer().grid.clone());
+                                    self.move_last_offset = Some((0, 0));
+                                    self.push_undo();
+                                }
+                                if let (Some((start_x, start_y)), Some(snapshot), Some((last_dx, last_dy))) = (self.move_drag_start, &self.move_layer_snapshot, self.move_last_offset) {
+                                    if interact_rect.dragged() {
+                                        let dx = x as isize - start_x as isize;
+                                        let dy = y as isize - start_y as isize;
+                                        if dx != last_dx || dy != last_dy {
+                                            let shifted = Self::shift_layer_grid(snapshot, dx, dy);
+                                            self.get_active_layer_mut().grid = shifted;
+                                            self.move_last_offset = Some((dx, dy));
                                         }
+                                    }
+                                    if interact_rect.drag_stopped() {
+                                        self.move_drag_start = None;
+                                        self.move_layer_snapshot = None;
+                                        self.move_last_offset = None;
                                     }
                                 }
                             }
 
-                            // Right click erase - Aseprite behavior
-                            if interact_rect.hovered() && pointer.secondary_down() {
-                                if interact_rect.secondary_clicked() && !undo_pushed {
-                                    self.push_undo();
-                                    undo_pushed = true;
+                            // Handle clicks (for tools that act on click: Bucket, Eyedropper, Alt+Click)
+                            if interact_rect.clicked() {
+                                self.push_undo(); // Push undo on the initial click
+                                match self.tool {
+                                    Tool::Bucket => {
+                                        let original_color = self.get_active_layer().grid[y][x];
+                                        if original_color != self.selected_color {
+                                            self.flood_fill(
+                                                x, // Corrected order: x, y
+                                                y,
+                                                original_color,
+                                                self.selected_color,
+                                            );
+                                        }
+                                    }
+                                    Tool::Eyedropper => {
+                                        self.selected_color = composed[y][x];
+                                    }
+                                    Tool::Pencil | Tool::Eraser => {
+                                        // For Pencil/Eraser, the click starts the drag.
+                                        // The drag logic below will handle the actual drawing for the first pixel.
+                                        // No specific action needed here beyond pushing undo.
+                                    }
+                                    Tool::Move => { /* TODO: Implement Move tool click behavior */ }
                                 }
-
+                            } else if interact_rect.secondary_clicked() {
+                                self.push_undo(); // Push undo on the initial right click
+                                // Right click always erases on click
                                 let brush = self.brush_size;
                                 let min_y = y.saturating_sub(brush / 2);
                                 let min_x = x.saturating_sub(brush / 2);
@@ -971,22 +992,79 @@ impl eframe::App for PixelArtEditor {
                                     }
                                 }
                             }
+
+                            // Handle drawing/erasing on drag (Pencil, Eraser)
+                            if interact_rect.hovered() && pointer.primary_down() && !alt { // Exclude Alt+Drag if Alt+Click is preferred
+                                match self.tool {
+                                    Tool::Pencil => {
+                                        let brush = self.brush_size;
+                                        let min_y = y.saturating_sub(brush / 2);
+                                        let min_x = x.saturating_sub(brush / 2);
+                                        let max_y = (y + brush / 2).min(height - 1);
+                                        let max_x = (x + brush / 2).min(width - 1);
+
+                                        for by in min_y..=max_y {
+                                            for bx in min_x..=max_x {
+                                                self.get_active_layer_mut().grid[by][bx] =
+                                                    self.selected_color;
+                                            }
+                                        }
+                                    }
+                                    Tool::Eraser => {
+                                        let brush = self.brush_size;
+                                        let min_y = y.saturating_sub(brush / 2);
+                                        let min_x = x.saturating_sub(brush / 2);
+                                        let max_y = (y + brush / 2).min(height - 1);
+                                        let max_x = (x + brush / 2).min(width - 1);
+
+                                        for by in min_y..=max_y {
+                                            for bx in min_x..=max_x {
+                                                self.get_active_layer_mut().grid[by][bx] =
+                                                    egui::Color32::TRANSPARENT;
+                                            }
+                                        }
+                                    }
+                                    _ => {} // Bucket, Eyedropper, and Move handled on click or have no drag behavior on pixels
+                                }
+                            }
+
+                            // Handle right-click erasing on drag
+                            if interact_rect.hovered() && pointer.secondary_down() {
+                                let brush = self.brush_size;
+                                let min_y = y.saturating_sub(brush / 2);
+                                let min_x = x.saturating_sub(brush / 2);
+                                let max_y = (y + brush / 2).min(height - 1);
+                                let max_x = (x + brush / 2).min(width - 1);
+
+                                for by in min_y..=max_y {
+                                    for bx in min_x..=max_x {
+                                        self.get_active_layer_mut().grid[by][bx] =
+                                            egui::Color32::TRANSPARENT;
+                                    }
+                                }
+                            }
+
+                            // Handle Alt+Click for Eyedropper regardless of current tool
+                            if interact_rect.clicked() && alt {
+                                self.selected_color = composed[y][x];
+                            }
                         }
                     }
                 });
         }); // <-- Add this line to properly close the CentralPanel closure
 
-        // Combined Layers and Frames Panel at the bottom
+        // Combined Layers and Frames Panel on the right side
         if self.show_layers_panel || self.show_frames_panel {
-            egui::TopBottomPanel::bottom("bottom_panel")
+            egui::SidePanel::right("right_panel")
                 .resizable(true)
-                .default_height(200.0)
+                .default_width(200.0 // Adjusted default width
+                )
                 .show(ctx, |ui| {
-                    ui.horizontal_wrapped(|ui| {
+                    ui.vertical(|ui| {
                         // Layers Panel
                         if self.show_layers_panel {
                             ui.vertical(|ui| {
-                                ui.set_min_width(250.0);
+                                ui.set_min_width(180.0); // Adjusted min width for layers within side panel
                                 ui.heading("📚 Layers");
                                 ui.separator();
 
@@ -1006,7 +1084,8 @@ impl eframe::App for PixelArtEditor {
 
                                 egui::ScrollArea::vertical()
                                     .id_salt("layers_panel_scroll")
-                                    .max_height(120.0)
+                                    .max_height(150.0 // Set fixed max height
+                                    )
                                     .show(ui, |ui| {
                                     // Display layers in reverse order (top to bottom like Aseprite)
                                     for (i, layer) in frame.layers.iter_mut().enumerate().rev() {
@@ -1026,55 +1105,25 @@ impl eframe::App for PixelArtEditor {
                                                     // Layer visibility checkbox first
                                                     if ui.checkbox(&mut layer.visible, "")
                                                         .on_hover_text("Toggle visibility")
-                                                        .changed() {
-                                                        ctx.request_repaint();
-                                                    }
+                                                        .changed() { ctx.request_repaint(); }
 
                                                     // Layer name (clickable to select)
-                                                    if ui.selectable_label(is_current, &layer.name).clicked() {
-                                                        self.current_layer = i;
-                                                    }
+                                                    if ui.selectable_label(is_current, &layer.name).clicked() { self.current_layer = i; }
 
                                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                                         let btn_size = egui::vec2(18.0, 18.0);
 
-                                                        if ui.add(egui::Button::new("🧹").min_size(btn_size))
-                                                            .on_hover_text("Clear Layer")
-                                                            .clicked() {
-                                                            layer_to_clear = Some(i);
-                                                        }
-
-                                                        if ui.add(egui::Button::new("📋").min_size(btn_size))
-                                                            .on_hover_text("Duplicate")
-                                                            .clicked() {
-                                                            layer_to_duplicate = Some(i);
-                                                        }
-
-                                                        if layers_len > 1
-                                                            && ui.add(egui::Button::new("🗑").min_size(btn_size))
-                                                                .on_hover_text("Delete")
-                                                                .clicked() {
-                                                            layer_to_remove = Some(i);
-                                                        }
-
-                                                        if ui.add(egui::Button::new("✏️").min_size(btn_size))
-                                                            .on_hover_text("Rename")
-                                                            .clicked() {
-                                                            layer_to_rename = Some(i);
-                                                            new_layer_name = layer.name.clone();
-                                                        }
+                                                        if ui.add(egui::Button::new("🧹").min_size(btn_size)).on_hover_text("Clear Layer").clicked() { layer_to_clear = Some(i); }
+                                                        if ui.add(egui::Button::new("📋").min_size(btn_size)).on_hover_text("Duplicate").clicked() { layer_to_duplicate = Some(i); }
+                                                        if layers_len > 1 && ui.add(egui::Button::new("🗑").min_size(btn_size)).on_hover_text("Delete").clicked() { layer_to_remove = Some(i); }
+                                                        if ui.add(egui::Button::new("✏️").min_size(btn_size)).on_hover_text("Rename").clicked() { layer_to_rename = Some(i); new_layer_name = layer.name.clone(); }
                                                     });
                                                 });
 
                                                 // Opacity slider
                                                 ui.horizontal(|ui| {
                                                     ui.label("Opacity:");
-                                                    if ui.add(egui::Slider::new(&mut layer.opacity, 0.0..=1.0)
-                                                        .show_value(true)
-                                                        .text(""))
-                                                        .changed() {
-                                                        ctx.request_repaint();
-                                                    }
+                                                    if ui.add(egui::Slider::new(&mut layer.opacity, 0.0..=1.0).show_value(true).text("")).changed() { ctx.request_repaint(); }
                                                 });
                                             });
 
@@ -1086,113 +1135,41 @@ impl eframe::App for PixelArtEditor {
 
                                 // Move layer up/down buttons
                                 ui.horizontal(|ui| {
-                                    if frame.layers.len() < MAX_LAYERS && ui.button("➕ Add Layer").clicked() {
-                                        add_layer = true;
-                                    }
-
-                                    if ui.button("🔼").on_hover_text("Move Layer Up").clicked()
-                                        && self.current_layer < frame.layers.len() - 1 {
-                                        should_move_up = true;
-                                    }
-
-                                    if ui.button("🔽").on_hover_text("Move Layer Down").clicked()
-                                        && self.current_layer > 0 {
-                                        should_move_down = true;
-                                    }
+                                    if frame.layers.len() < MAX_LAYERS && ui.button("➕ Add Layer").clicked() { add_layer = true; }
+                                    if ui.button("🔼").on_hover_text("Move Layer Up").clicked() && self.current_layer < frame.layers.len() - 1 { should_move_up = true; }
+                                    if ui.button("🔽").on_hover_text("Move Layer Down").clicked() && self.current_layer > 0 { should_move_down = true; }
                                 });
 
                                 // Handle layer operations
-                                if layer_to_remove.is_some() || add_layer || layer_to_duplicate.is_some() || layer_to_clear.is_some() {
-                                    self.push_undo();
-                                }
+                                if layer_to_remove.is_some() || add_layer || layer_to_duplicate.is_some() || layer_to_clear.is_some() { self.push_undo(); }
 
                                 let frame = &mut self.frames[self.current_frame];
-                                if let Some(i) = layer_to_remove {
-                                    frame.layers.remove(i);
-                                    if self.current_layer >= frame.layers.len() {
-                                        self.current_layer = frame.layers.len().saturating_sub(1);
-                                    }
-                                }
-
-                                if let Some(i) = layer_to_duplicate {
-                                    let mut duplicated_layer = frame.layers[i].clone();
-                                    duplicated_layer.name = format!("{} Copy", duplicated_layer.name);
-                                    frame.layers.insert(i + 1, duplicated_layer);
-                                    self.current_layer = i + 1;
-                                }
-
-                                if let Some(i) = layer_to_clear {
-                                    let w = frame.layers[i].width();
-                                    let h = frame.layers[i].height();
-                                    frame.layers[i].grid = vec![vec![egui::Color32::TRANSPARENT; w]; h];
-                                }
-
-                                if add_layer {
-                                    let layer = Layer {
-                                        name: format!("Layer {}", frame.layers.len() + 1),
-                                        visible: true,
-                                        opacity: 1.0,
-                                        grid: {
-                                            let w = frame.layers[0].width();
-                                            let h = frame.layers[0].height();
-                                            vec![vec![egui::Color32::TRANSPARENT; w]; h]
-                                        },
-                                    };
-                                    frame.layers.push(layer);
-                                    self.current_layer = frame.layers.len() - 1;
-                                }
+                                if let Some(i) = layer_to_remove { frame.layers.remove(i); if self.current_layer >= frame.layers.len() { self.current_layer = frame.layers.len().saturating_sub(1); } }
+                                if let Some(i) = layer_to_duplicate { let mut duplicated_layer = frame.layers[i].clone(); duplicated_layer.name = format!("{} Copy", duplicated_layer.name); frame.layers.insert(i + 1, duplicated_layer); self.current_layer = i + 1; }
+                                if let Some(i) = layer_to_clear { let w = frame.layers[i].width(); let h = frame.layers[i].height(); frame.layers[i].grid = vec![vec![egui::Color32::TRANSPARENT; w]; h]; }
+                                if add_layer { let layer = Layer { name: format!("Layer {}", frame.layers.len() + 1), visible: true, opacity: 1.0, grid: { let w = frame.layers[0].width(); let h = frame.layers[0].height(); vec![vec![egui::Color32::TRANSPARENT; w]; h] }, }; frame.layers.push(layer); self.current_layer = frame.layers.len() - 1; }
 
                                 // Fix layer movement - moving up means higher in layer stack
-                                if should_move_up {
-                                    self.push_undo();
-                                    let frame = &mut self.frames[self.current_frame];
-                                    frame.layers.swap(self.current_layer, self.current_layer + 1);
-                                    self.current_layer += 1;
-                                }
-
-                                if should_move_down {
-                                    self.push_undo();
-                                    let frame = &mut self.frames[self.current_frame];
-                                    frame.layers.swap(self.current_layer, self.current_layer - 1);
-                                    self.current_layer -= 1;
-                                }
+                                if should_move_up { self.push_undo(); let frame = &mut self.frames[self.current_frame]; frame.layers.swap(self.current_layer, self.current_layer + 1); self.current_layer += 1; }
+                                if should_move_down { self.push_undo(); let frame = &mut self.frames[self.current_frame]; frame.layers.swap(self.current_layer, self.current_layer - 1); self.current_layer -= 1; }
 
                                 // Handle layer renaming dialog
                                 if let Some(layer_idx) = layer_to_rename {
-                                    egui::Window::new("Rename Layer")
-                                        .collapsible(false)
-                                        .resizable(false)
-                                        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-                                        .show(ctx, |ui| {
-                                            ui.horizontal(|ui| {
-                                                ui.label("Name:");
-                                                ui.text_edit_singleline(&mut new_layer_name);
-                                            });
-
-                                            ui.separator();
-                                            ui.horizontal(|ui| {
-                                                if ui.button("✅ Rename").clicked() {
-                                                    if !new_layer_name.is_empty() {
-                                                        self.frames[self.current_frame].layers[layer_idx].name =
-                                                            new_layer_name.clone();
-                                                    }
-                                                    layer_to_rename = None;
-                                                }
-                                                if ui.button("❌ Cancel").clicked() {
-                                                    layer_to_rename = None;
-                                                }
-                                            });
-                                        });
+                                    egui::Window::new("Rename Layer").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0)).show(ctx, |ui| {
+                                        ui.horizontal(|ui| { ui.label("Name:"); ui.text_edit_singleline(&mut new_layer_name); });
+                                        ui.separator();
+                                        ui.horizontal(|ui| { if ui.button("✅ Rename").clicked() { if !new_layer_name.is_empty() { self.frames[self.current_frame].layers[layer_idx].name = new_layer_name.clone(); } layer_to_rename = None; } if ui.button("❌ Cancel").clicked() { layer_to_rename = None; } });
+                                    });
                                 }
                             });
-                            
+
                             ui.separator();
                         }
 
                         // Frames Panel
                         if self.show_frames_panel {
                             ui.vertical(|ui| {
-                                ui.set_min_width(250.0);
+                                ui.set_min_width(180.0); // Adjusted min width for frames within side panel
                                 ui.heading("🎬 Frames");
                                 ui.separator();
 
@@ -1201,7 +1178,10 @@ impl eframe::App for PixelArtEditor {
                                     .map(|i| (i, self.animation_playing && self.animation_frame == i))
                                     .collect();
 
-                                egui::ScrollArea::horizontal().show(ui, |ui| {
+                                egui::ScrollArea::horizontal()
+                                    .max_height(150.0 // Set fixed max height
+                                    )
+                                    .show(ui, |ui| {
                                     ui.horizontal(|ui| {
                                         for (i, is_anim_frame) in frame_infos {
                                             let is_current = self.current_frame == i;
@@ -1234,16 +1214,10 @@ impl eframe::App for PixelArtEditor {
                                                             // Frame title and controls
                                                             ui.horizontal(|ui| {
                                                                 let frame_display = format!("Frame {}", i + 1);
-                                                                if ui.selectable_label(is_current, frame_display).clicked() {
-                                                                    self.current_frame = i;
-                                                                    self.current_layer = 0;
-                                                                }
-                                                                
-                                                                if is_anim_frame {
-                                                                    ui.label("▶");
-                                                                }
+                                                                if ui.selectable_label(is_current, frame_display).clicked() { self.current_frame = i; self.current_layer = 0; }
+                                                                if is_anim_frame { ui.label("▶"); }
                                                             });
-                                                            
+
                                                             // Create a preview of the frame
                                                             let (rect, _) = ui.allocate_exact_size(
                                                                 egui::vec2(width as f32 * scale, height as f32 * scale),
@@ -1252,33 +1226,10 @@ impl eframe::App for PixelArtEditor {
 
                                                             // Get the composed frame (all visible layers)
                                                             let mut composed = vec![vec![egui::Color32::TRANSPARENT; width]; height];
-                                                            for layer in &frame.layers {
-                                                                if !layer.visible {
-                                                                    continue;
-                                                                }
-                                                                for y in 0..height {
-                                                                    for x in 0..width {
-                                                                        let c = layer.grid[y][x];
-                                                                        if c.a() > 0 {
-                                                                            composed[y][x] = c;
-                                                                        }
-                                                                    }
-                                                                }
-                                                            }
+                                                            for layer in &frame.layers { if !layer.visible { continue; } for y in 0..height { for x in 0..width { let c = layer.grid[y][x]; if c.a() > 0 { composed[y][x] = c; } } } }
 
                                                             // Draw the preview
-                                                            for y in 0..height {
-                                                                for x in 0..width {
-                                                                    let pixel_color = composed[y][x];
-                                                                    if pixel_color.a() > 0 {
-                                                                        let pixel_rect = egui::Rect::from_min_size(
-                                                                            rect.min + egui::vec2(x as f32 * scale, y as f32 * scale),
-                                                                            egui::vec2(scale, scale),
-                                                                        );
-                                                                        ui.painter().rect_filled(pixel_rect, 0.0, pixel_color);
-                                                                    }
-                                                                }
-                                                            }
+                                                            for y in 0..height { for x in 0..width { let pixel_color = composed[y][x]; if pixel_color.a() > 0 { let pixel_rect = egui::Rect::from_min_size( rect.min + egui::vec2(x as f32 * scale, y as f32 * scale), egui::vec2(scale, scale), ); ui.painter().rect_filled(pixel_rect, 0.0, pixel_color); } } }
 
                                                             // Draw a frame around the preview
                                                             ui.painter().rect_stroke(
@@ -1293,30 +1244,11 @@ impl eframe::App for PixelArtEditor {
                                                     // Frame controls (no borrow of frame here)
                                                     ui.horizontal(|ui| {
                                                         let btn_size = egui::vec2(18.0, 18.0);
-                                                        
-                                                        if self.frames.len() > 1 && ui.add(egui::Button::new("🗑").min_size(btn_size))
-                                                            .on_hover_text("Delete Frame")
-                                                            .clicked() {
-                                                            self.push_undo();
-                                                            self.frames.remove(i);
-                                                            if self.current_frame >= self.frames.len() {
-                                                                self.current_frame = self.frames.len() - 1;
-                                                            }
-                                                            self.current_layer = 0;
-                                                        }
-
-                                                        if ui.add(egui::Button::new("📋").min_size(btn_size))
-                                                            .on_hover_text("Duplicate Frame")
-                                                            .clicked() {
-                                                            self.push_undo();
-                                                            let new_frame = self.frames[i].clone();
-                                                            self.frames.insert(i + 1, new_frame);
-                                                            self.current_frame = i + 1;
-                                                            self.current_layer = 0;
-                                                        }
+                                                        if self.frames.len() > 1 && ui.add(egui::Button::new("🗑").min_size(btn_size)).on_hover_text("Delete Frame").clicked() { self.push_undo(); self.frames.remove(i); if self.current_frame >= self.frames.len() { self.current_frame = self.frames.len() - 1; } self.current_layer = 0; }
+                                                        if ui.add(egui::Button::new("📋").min_size(btn_size)).on_hover_text("Duplicate Frame").clicked() { self.push_undo(); let new_frame = self.frames[i].clone(); self.frames.insert(i + 1, new_frame); self.current_frame = i + 1; self.current_layer = 0; }
                                                     });
                                                 });
-                                            
+
                                             ui.add_space(4.0);
                                         }
                                     });
@@ -1324,49 +1256,17 @@ impl eframe::App for PixelArtEditor {
 
                                 ui.separator();
                                 ui.horizontal(|ui| {
-                                    if self.frames.len() < MAX_FRAMES && ui.button("➕ Add Frame").clicked() {
-                                        self.push_undo();
-                                        if self.frames.is_empty() {
-                                            self.frames.push(Frame::default());
-                                        } else {
-                                            let new_frame = self.frames[self.current_frame].clone();
-                                            self.frames.insert(self.current_frame + 1, new_frame);
-                                            self.current_frame += 1;
-                                        }
-                                        self.current_layer = 0;
-                                    }
+                                    if self.frames.len() < MAX_FRAMES && ui.button("➕ Add Frame").clicked() { self.push_undo(); if self.frames.is_empty() { self.frames.push(Frame::default()); } else { let new_frame = self.frames[self.current_frame].clone(); self.frames.insert(self.current_frame + 1, new_frame); self.current_frame += 1; } self.current_layer = 0; }
+                                    if ui.button("⏮").on_hover_text("First Frame").clicked() && !self.frames.is_empty() { self.current_frame = 0; self.current_layer = 0; }
+                                    if ui.button("⏭").on_hover_text("Last Frame").clicked() && !self.frames.is_empty() { self.current_frame = self.frames.len() - 1; self.current_layer = 0; }
 
-                                    if ui.button("⏮").on_hover_text("First Frame").clicked() && !self.frames.is_empty() {
-                                        self.current_frame = 0;
-                                        self.current_layer = 0;
-                                    }
-
-                                    if ui.button("⏭").on_hover_text("Last Frame").clicked() && !self.frames.is_empty() {
-                                        self.current_frame = self.frames.len() - 1;
-                                        self.current_layer = 0;
-                                    }
-                                    
                                     // Animation controls in frame panel
                                     if self.frames.len() > 1 {
                                         ui.separator();
                                         let play_icon = if self.animation_playing { "⏸" } else { "▶" };
-                                        if ui.button(play_icon).on_hover_text("Play/Pause Animation").clicked() {
-                                            self.animation_playing = !self.animation_playing;
-                                            if self.animation_playing {
-                                                self.animation_frame = 0;
-                                                self.last_animation_time = ctx.input(|i| i.time);
-                                            }
-                                        }
-                                        
+                                        if ui.button(play_icon).on_hover_text("Play/Pause Animation").clicked() { self.animation_playing = !self.animation_playing; if self.animation_playing { self.animation_frame = 0; self.last_animation_time = ctx.input(|i| i.time); } }
                                         ui.add(egui::Slider::new(&mut self.animation_speed, 1.0..=30.0).text("FPS"));
-                                        
-                                        if self.animation_playing {
-                                            ui.label(format!(
-                                                "Frame: {}/{}",
-                                                self.animation_frame + 1,
-                                                self.frames.len()
-                                            ));
-                                        }
+                                        if self.animation_playing { ui.label(format!("Frame: {}/{}", self.animation_frame + 1, self.frames.len())); }
                                     }
                                 });
                             });
@@ -1374,7 +1274,7 @@ impl eframe::App for PixelArtEditor {
                     });
                 });
         }
-        
+
         // Handle keyboard shortcuts
         if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Z)) {
             self.undo();
