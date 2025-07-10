@@ -664,7 +664,9 @@ impl eframe::App for PixelArtEditor {
                     let palette_size = 30.0;
                     let columns = 4;
 
-                    egui::ScrollArea::vertical().show(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_source("color_palette_scroll")
+                        .show(ui, |ui| {
                         let mut row = Vec::new();
 
                         for (i, color) in self.color_palette.iter().enumerate() {
@@ -886,7 +888,10 @@ impl eframe::App for PixelArtEditor {
                                 let layers_len = frame.layers.len();
                                 let current_layer = self.current_layer;
 
-                                egui::ScrollArea::vertical().max_height(120.0).show(ui, |ui| {
+                                egui::ScrollArea::vertical()
+                                    .id_source("layers_panel_scroll")
+                                    .max_height(120.0)
+                                    .show(ui, |ui| {
                                     for (i, layer) in frame.layers.iter_mut().enumerate().rev() {
                                         let is_current = current_layer == i;
 
