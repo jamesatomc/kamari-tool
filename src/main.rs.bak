@@ -856,7 +856,7 @@ impl eframe::App for PixelArtEditor {
                         }
                     }
                 });
-        }); // <-- Add this line to properly close the CentralPanel closure
+        } // Properly close the CentralPanel closure
 
         // Combined Layers and Frames Panel at the bottom
         if self.show_layers_panel || self.show_frames_panel {
@@ -1094,100 +1094,97 @@ impl eframe::App for PixelArtEditor {
                                                 .show(ui, |ui| {
                                                     // Preview of the frame
                                                     let preview_size = 80.0;
-                                                    // Only borrow frame for preview
-                                                    {
-                                                        let frame = &self.frames[i];
-                                                        let width = frame.layers[0].width();
-                                                        let height = frame.layers[0].height();
+                                                    let frame = &self.frames[i];
+                                                    let width = frame.layers[0].width();
+                                                    let height = frame.layers[0].height();
 
-                                                        // Calculate pixel size to fit within preview
-                                                        let scale = (preview_size / width as f32)
-                                                            .min(preview_size / height as f32);
+                                                    // Calculate pixel size to fit within preview
+                                                    let scale = (preview_size / width as f32)
+                                                        .min(preview_size / height as f32);
 
-                                                        ui.vertical(|ui| {
-                                                            // Frame title and controls
-                                                            ui.horizontal(|ui| {
-                                                                let frame_display = format!("Frame {}", i + 1);
-                                                                if ui.selectable_label(is_current, frame_display).clicked() {
-                                                                    self.current_frame = i;
-                                                                    self.current_layer = 0;
-                                                                }
-                                                                
-                                                                if is_anim_frame {
-                                                                    ui.label("▶");
-                                                                }
-                                                            });
-                                                            
-                                                            // Create a preview of the frame
-                                                            let (rect, _) = ui.allocate_exact_size(
-                                                                egui::vec2(width as f32 * scale, height as f32 * scale),
-                                                                egui::Sense::hover(),
-                                                            );
-
-                                                            // Get the composed frame (all visible layers)
-                                                            let mut composed = vec![vec![egui::Color32::TRANSPARENT; width]; height];
-                                                            for layer in &frame.layers {
-                                                                if !layer.visible {
-                                                                    continue;
-                                                                }
-                                                                for y in 0..height {
-                                                                    for x in 0..width {
-                                                                        let c = layer.grid[y][x];
-                                                                        if c.a() > 0 {
-                                                                            composed[y][x] = c;
-                                                                        }
-                                                                    }
-                                                                }
+                                                    ui.vertical(|ui| {
+                                                        // Frame title and controls
+                                                        ui.horizontal(|ui| {
+                                                            let frame_display = format!("Frame {}", i + 1);
+                                                            if ui.selectable_label(is_current, frame_display).clicked() {
+                                                                self.current_frame = i;
+                                                                self.current_layer = 0;
                                                             }
+                                                            
+                                                            if is_anim_frame {
+                                                                ui.label("▶");
+                                                            }
+                                                        });
+                                                        
+                                                        // Create a preview of the frame
+                                                        let (rect, _) = ui.allocate_exact_size(
+                                                            egui::vec2(width as f32 * scale, height as f32 * scale),
+                                                            egui::Sense::hover(),
+                                                        );
 
-                                                            // Draw the preview
+                                                        // Get the composed frame (all visible layers)
+                                                        let mut composed = vec![vec![egui::Color32::TRANSPARENT; width]; height];
+                                                        for layer in &frame.layers {
+                                                            if !layer.visible {
+                                                                continue;
+                                                            }
                                                             for y in 0..height {
                                                                 for x in 0..width {
-                                                                    let pixel_color = composed[y][x];
-                                                                    if pixel_color.a() > 0 {
-                                                                        let pixel_rect = egui::Rect::from_min_size(
-                                                                            rect.min + egui::vec2(x as f32 * scale, y as f32 * scale),
-                                                                            egui::vec2(scale, scale),
-                                                                        );
-                                                                        ui.painter().rect_filled(pixel_rect, 0.0, pixel_color);
+                                                                    let c = layer.grid[y][x];
+                                                                    if c.a() > 0 {
+                                                                        composed[y][x] = c;
                                                                     }
                                                                 }
                                                             }
+                                                        }
 
-                                                            // Draw a frame around the preview
-                                                            ui.painter().rect_stroke(
-                                                                rect,
-                                                                0.0,
-                                                                egui::Stroke::new(1.0, ui.visuals().widgets.active.bg_stroke.color),
-                                                                egui::epaint::StrokeKind::Middle,
-                                                            );
-                                                        });
-                                                    }
-
-                                                    // Frame controls (no borrow of frame here)
-                                                    ui.horizontal(|ui| {
-                                                        let btn_size = egui::vec2(18.0, 18.0);
-                                                        
-                                                        if self.frames.len() > 1 && ui.add(egui::Button::new("🗑").min_size(btn_size))
-                                                            .on_hover_text("Delete Frame")
-                                                            .clicked() {
-                                                            self.push_undo();
-                                                            self.frames.remove(i);
-                                                            if self.current_frame >= self.frames.len() {
-                                                                self.current_frame = self.frames.len() - 1;
+                                                        // Draw the preview
+                                                        for y in 0..height {
+                                                            for x in 0..width {
+                                                                let pixel_color = composed[y][x];
+                                                                if pixel_color.a() > 0 {
+                                                                    let pixel_rect = egui::Rect::from_min_size(
+                                                                        rect.min + egui::vec2(x as f32 * scale, y as f32 * scale),
+                                                                        egui::vec2(scale, scale),
+                                                                    );
+                                                                    ui.painter().rect_filled(pixel_rect, 0.0, pixel_color);
+                                                                }
                                                             }
-                                                            self.current_layer = 0;
                                                         }
 
-                                                        if ui.add(egui::Button::new("📋").min_size(btn_size))
-                                                            .on_hover_text("Duplicate Frame")
-                                                            .clicked() {
-                                                            self.push_undo();
-                                                            let new_frame = self.frames[i].clone();
-                                                            self.frames.insert(i + 1, new_frame);
-                                                            self.current_frame = i + 1;
-                                                            self.current_layer = 0;
-                                                        }
+                                                        // Draw a frame around the preview
+                                                        ui.painter().rect_stroke(
+                                                            rect,
+                                                            0.0,
+                                                            egui::Stroke::new(1.0, ui.visuals().widgets.active.bg_stroke.color),
+                                                            egui::epaint::StrokeKind::Middle,
+                                                        );
+                                                        
+                                                        // Frame controls
+                                                        ui.horizontal(|ui| {
+                                                            let btn_size = egui::vec2(18.0, 18.0);
+                                                            
+                                                            if self.frames.len() > 1 && ui.add(egui::Button::new("🗑").min_size(btn_size))
+                                                                .on_hover_text("Delete Frame")
+                                                                .clicked() {
+                                                                self.push_undo();
+                                                                self.frames.remove(i);
+                                                                if self.current_frame >= self.frames.len() {
+                                                                    self.current_frame = self.frames.len() - 1;
+                                                                }
+                                                                self.current_layer = 0;
+                                                            }
+
+                                                            if ui.add(egui::Button::new("📋").min_size(btn_size))
+                                                                .on_hover_text("Duplicate Frame")
+                                                                .clicked() {
+                                                                self.push_undo();
+                                                                let new_frame = self.frames[i].clone();
+                                                                self.frames.insert(i + 1, new_frame);
+                                                                self.current_frame = i + 1;
+                                                                self.current_layer = 0;
+                                                            }
+                                                        });
                                                     });
                                                 });
                                             
