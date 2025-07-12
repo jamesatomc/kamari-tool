@@ -11,6 +11,8 @@ pub struct PixelArtEditor {
     pub secondary_color: egui::Color32,
     pub tool: Tool,
     pub last_state: Option<(Vec<Frame>, usize, usize)>,
+    pub undo_stack: Vec<(Vec<Frame>, usize, usize)>,
+    pub redo_stack: Vec<(Vec<Frame>, usize, usize)>,
     pub show_grid: bool,
     pub brush_size: usize,
     pub zoom: f32,
@@ -102,6 +104,8 @@ impl Default for PixelArtEditor {
             secondary_color: egui::Color32::WHITE,
             tool: Tool::Pencil,
             last_state: None,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
             show_grid: true,
             brush_size: 1,
             zoom: 1.0,
@@ -194,15 +198,57 @@ impl PixelArtEditor {
     }
 
     pub fn push_undo(&mut self) {
+        // Store current state in undo stack
+        self.undo_stack.push((self.frames.clone(), self.current_frame, self.current_layer));
+        
+        // Clear redo stack when making a new change
+        self.redo_stack.clear();
+        
+        // Keep undo stack size reasonable (last 50 states)
+        if self.undo_stack.len() > 50 {
+            self.undo_stack.remove(0);
+        }
+        
+        // Also keep the old last_state for compatibility
         self.last_state = Some((self.frames.clone(), self.current_frame, self.current_layer));
     }
 
     pub fn undo(&mut self) {
-        if let Some((frames, cf, cl)) = self.last_state.take() {
+        if let Some((frames, cf, cl)) = self.undo_stack.pop() {
+            // Push current state to redo stack
+            self.redo_stack.push((self.frames.clone(), self.current_frame, self.current_layer));
+            
+            // Restore previous state
             self.frames = frames;
             self.current_frame = cf;
             self.current_layer = cl;
+            
+            // Invalidate cache
+            self.invalidate_cache();
         }
+    }
+
+    pub fn redo(&mut self) {
+        if let Some((frames, cf, cl)) = self.redo_stack.pop() {
+            // Push current state to undo stack
+            self.undo_stack.push((self.frames.clone(), self.current_frame, self.current_layer));
+            
+            // Restore redo state
+            self.frames = frames;
+            self.current_frame = cf;
+            self.current_layer = cl;
+            
+            // Invalidate cache
+            self.invalidate_cache();
+        }
+    }
+
+    pub fn can_undo(&self) -> bool {
+        !self.undo_stack.is_empty()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        !self.redo_stack.is_empty()
     }
 
     pub fn get_active_layer_mut(&mut self) -> &mut Layer {
@@ -314,18 +360,18 @@ impl PixelArtEditor {
 
     pub fn tool_icon(&self, tool: Tool) -> &'static str {
         match tool {
-            Tool::Pencil => "✎",      // Pencil icon
-            Tool::Eraser => "⌫",      // Erase icon
-            Tool::Bucket => "🪣",     // Bucket icon (if supported, else fallback)
-            Tool::Eyedropper => "🎨",  // Eyedropper icon
-            Tool::Move => "✥",        // Move icon
-            Tool::Line => "📏",       // Line icon
-            Tool::Rectangle => "▭",   // Rectangle icon
-            Tool::Circle => "○",      // Circle icon
-            Tool::Select => "⬚",      // Select icon
-            Tool::Lasso => "◯",       // Lasso icon
-            Tool::Spray => "💨",      // Spray icon
-            Tool::Dither => "▦",      // Dither icon
+            Tool::Pencil => "P",      // Pencil
+            Tool::Eraser => "E",      // Eraser
+            Tool::Bucket => "B",      // Bucket fill
+            Tool::Eyedropper => "I",  // Pick color
+            Tool::Move => "M",        // Move
+            Tool::Line => "L",        // Line
+            Tool::Rectangle => "R",   // Rectangle
+            Tool::Circle => "C",      // Circle
+            Tool::Select => "S",      // Select
+            Tool::Lasso => "A",       // Lasso select
+            Tool::Spray => "Y",       // Spray paint
+            Tool::Dither => "D",      // Dither
         }
     }
     
@@ -336,27 +382,20 @@ impl PixelArtEditor {
     }
     
     pub fn tool_icon_safe(&self, tool: Tool) -> String {
-        use unicode_segmentation::UnicodeSegmentation;
-        let icon = self.tool_icon_normalized(tool);
-        // Check if emoji is supported, fallback to text if not
-        if icon.graphemes(true).count() > 0 {
-            icon
-        } else {
-            // Fallback to simple text icons
-            match tool {
-                Tool::Pencil => "P".to_string(),
-                Tool::Eraser => "E".to_string(),
-                Tool::Bucket => "B".to_string(),
-                Tool::Eyedropper => "I".to_string(),
-                Tool::Move => "M".to_string(),
-                Tool::Line => "L".to_string(),
-                Tool::Rectangle => "R".to_string(),
-                Tool::Circle => "C".to_string(),
-                Tool::Select => "S".to_string(),
-                Tool::Lasso => "A".to_string(),
-                Tool::Spray => "Y".to_string(),
-                Tool::Dither => "D".to_string(),
-            }
+        // Return simple text icons that work reliably
+        match tool {
+            Tool::Pencil => "[P]".to_string(),
+            Tool::Eraser => "[E]".to_string(),
+            Tool::Bucket => "[B]".to_string(),
+            Tool::Eyedropper => "[I]".to_string(),
+            Tool::Move => "[M]".to_string(),
+            Tool::Line => "[L]".to_string(),
+            Tool::Rectangle => "[R]".to_string(),
+            Tool::Circle => "[C]".to_string(),
+            Tool::Select => "[S]".to_string(),
+            Tool::Lasso => "[A]".to_string(),
+            Tool::Spray => "[Y]".to_string(),
+            Tool::Dither => "[D]".to_string(),
         }
     }
 
@@ -466,48 +505,9 @@ impl PixelArtEditor {
 
     /// Execute a plugin command safely
     pub fn execute_plugin_command(&mut self, command_id: &str) {
-        // This method allows safe execution of plugin commands without borrowing conflicts
+        // Create a temporary reference to avoid borrowing issues
         match command_id {
-            "blur" => {
-                self.push_undo();
-                if let Some(layer) = self.frames.get_mut(self.current_frame)
-                    .and_then(|frame| frame.layers.get_mut(self.current_layer)) {
-                    let blur_plugin = crate::plugins::aseprite_plugin::BlurPlugin::new();
-                    blur_plugin.apply_blur(layer, 1.0);
-                }
-            }
-            "noise" => {
-                self.push_undo();
-                if let Some(layer) = self.frames.get_mut(self.current_frame)
-                    .and_then(|frame| frame.layers.get_mut(self.current_layer)) {
-                    let noise_plugin = crate::plugins::aseprite_plugin::NoisePlugin::new();
-                    noise_plugin.apply_noise(layer, 10.0);
-                }
-            }
-            "outline" => {
-                self.push_undo();
-                if let Some(layer) = self.frames.get_mut(self.current_frame)
-                    .and_then(|frame| frame.layers.get_mut(self.current_layer)) {
-                    let outline_plugin = crate::plugins::aseprite_plugin::OutlinePlugin::new();
-                    outline_plugin.apply_outline(layer, egui::Color32::BLACK, 1);
-                }
-            }
-            "pixelate" => {
-                self.push_undo();
-                if let Some(layer) = self.frames.get_mut(self.current_frame)
-                    .and_then(|frame| frame.layers.get_mut(self.current_layer)) {
-                    let pixelate_plugin = crate::plugins::aseprite_plugin::PixelatePlugin::new();
-                    pixelate_plugin.apply_pixelate(layer, 2);
-                }
-            }
-            "color_replace" => {
-                self.push_undo();
-                if let Some(layer) = self.frames.get_mut(self.current_frame)
-                    .and_then(|frame| frame.layers.get_mut(self.current_layer)) {
-                    let color_replace_plugin = crate::plugins::aseprite_plugin::ColorReplacementPlugin::new();
-                    color_replace_plugin.replace_color(layer, egui::Color32::BLACK, egui::Color32::WHITE, 0);
-                }
-            }
+
             _ => {
                 eprintln!("Unknown plugin command: {}", command_id);
             }

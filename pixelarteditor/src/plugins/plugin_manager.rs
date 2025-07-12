@@ -157,62 +157,7 @@ impl PluginManager {
             // Execute plugin directly on the editor
             // For now, we'll handle the common plugin operations directly
             match command_id {
-                "blur" => {
-                    editor.push_undo();
-                    if let Some(layer) = editor.frames.get_mut(editor.current_frame)
-                        .and_then(|frame| frame.layers.get_mut(editor.current_layer)) {
-                        // Apply blur effect with default radius
-                        let blur_plugin = crate::plugins::aseprite_plugin::BlurPlugin::new();
-                        blur_plugin.apply_blur(layer, 1.0);
-                        PluginResult::Success
-                    } else {
-                        PluginResult::Error("No active layer".to_string())
-                    }
-                }
-                "noise" => {
-                    editor.push_undo();
-                    if let Some(layer) = editor.frames.get_mut(editor.current_frame)
-                        .and_then(|frame| frame.layers.get_mut(editor.current_layer)) {
-                        let noise_plugin = crate::plugins::aseprite_plugin::NoisePlugin::new();
-                        noise_plugin.apply_noise(layer, 10.0);
-                        PluginResult::Success
-                    } else {
-                        PluginResult::Error("No active layer".to_string())
-                    }
-                }
-                "outline" => {
-                    editor.push_undo();
-                    if let Some(layer) = editor.frames.get_mut(editor.current_frame)
-                        .and_then(|frame| frame.layers.get_mut(editor.current_layer)) {
-                        let outline_plugin = crate::plugins::aseprite_plugin::OutlinePlugin::new();
-                        outline_plugin.apply_outline(layer, egui::Color32::BLACK, 1);
-                        PluginResult::Success
-                    } else {
-                        PluginResult::Error("No active layer".to_string())
-                    }
-                }
-                "pixelate" => {
-                    editor.push_undo();
-                    if let Some(layer) = editor.frames.get_mut(editor.current_frame)
-                        .and_then(|frame| frame.layers.get_mut(editor.current_layer)) {
-                        let pixelate_plugin = crate::plugins::aseprite_plugin::PixelatePlugin::new();
-                        pixelate_plugin.apply_pixelate(layer, 2);
-                        PluginResult::Success
-                    } else {
-                        PluginResult::Error("No active layer".to_string())
-                    }
-                }
-                "color_replace" => {
-                    editor.push_undo();
-                    if let Some(layer) = editor.frames.get_mut(editor.current_frame)
-                        .and_then(|frame| frame.layers.get_mut(editor.current_layer)) {
-                        let color_replace_plugin = crate::plugins::aseprite_plugin::ColorReplacementPlugin::new();
-                        color_replace_plugin.replace_color(layer, egui::Color32::BLACK, egui::Color32::WHITE, 0);
-                        PluginResult::Success
-                    } else {
-                        PluginResult::Error("No active layer".to_string())
-                    }
-                }
+
                 _ => PluginResult::Error(format!("Unknown command: {}", command_id))
             }
         } else {
@@ -220,20 +165,39 @@ impl PluginManager {
         }
     }
     
+    /// Execute a plugin by name
+    pub fn execute_plugin(&self, plugin_name: &str, editor: &mut crate::editor::PixelArtEditor) -> PluginResult {
+        // Check if it's a built-in plugin first
+        if let Some(result) = self.execute_builtin_plugin(plugin_name, editor) {
+            return result;
+        }
+        
+        // For now, we only support built-in plugins
+        PluginResult::Error(format!("Plugin '{}' not found", plugin_name))
+    }
+    
+    /// Execute built-in plugins
+    fn execute_builtin_plugin(&self, plugin_name: &str, editor: &mut crate::editor::PixelArtEditor) -> Option<PluginResult> {
+        match plugin_name {
+
+            _ => None
+        }
+    }
+    
     /// Show plugin manager UI
     pub fn show_plugin_manager(&mut self, ctx: &egui::Context) {
         if self.show_plugin_dialog {
-            egui::Window::new("🔌 Plugin Manager")
+            egui::Window::new("Plugin Manager")
                 .collapsible(false)
                 .resizable(true)
                 .default_size(egui::vec2(500.0, 400.0))
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        if ui.button("📦 Install Plugin").clicked() {
+                        if ui.button("Install Plugin").clicked() {
                             self.show_install_dialog = true;
                         }
                         ui.separator();
-                        if ui.button("🔄 Refresh").clicked() {
+                        if ui.button("Refresh").clicked() {
                             self.load_plugins_from_disk();
                         }
                     });
@@ -253,7 +217,7 @@ impl PluginManager {
                                             ui.label(&metadata.description);
                                         });
                                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                            if ui.button("⚙️ Configure").clicked() {
+                                            if ui.button("Configure").clicked() {
                                                 self.active_plugin_id = Some(metadata.name.clone());
                                                 // Load plugin parameters
                                                 if let Some(plugin) = self.registry.get_plugin(&metadata.name) {
@@ -287,7 +251,7 @@ impl PluginManager {
     
     /// Show plugin installation dialog
     fn show_install_dialog(&mut self, ctx: &egui::Context) {
-        egui::Window::new("📦 Install Plugin")
+        egui::Window::new("Install Plugin")
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
@@ -335,7 +299,7 @@ impl PluginManager {
     pub fn show_plugin_config(&mut self, ctx: &egui::Context) {
         if let Some(plugin_id) = &self.active_plugin_id.clone() {
             if let Some(plugin) = self.registry.get_plugin_mut(plugin_id) {
-                let should_close = egui::Window::new(format!("⚙️ Configure {}", plugin.metadata().name))
+                let should_close = egui::Window::new(format!("Configure {}", plugin.metadata().name))
                     .collapsible(false)
                     .resizable(false)
                     .show(ctx, |ui| {

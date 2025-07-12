@@ -39,6 +39,14 @@ impl PixelArtEditor {
                     self.undo();
                     ui.close_menu();
                 }
+                if ui
+                    .add_enabled(self.can_redo(), egui::Button::new("Redo"))
+                    .on_hover_text("Redo (Ctrl+Shift+Z)")
+                    .clicked()
+                {
+                    self.redo();
+                    ui.close_menu();
+                }
             });
 
             ui.menu_button("Edit", |ui| {
@@ -63,6 +71,14 @@ impl PixelArtEditor {
                     .clicked()
                 {
                     self.undo();
+                    ui.close_menu();
+                }
+                if ui
+                    .add_enabled(self.can_redo(), egui::Button::new("Redo"))
+                    .on_hover_text("Redo (Ctrl+Shift+Z)")
+                    .clicked()
+                {
+                    self.redo();
                     ui.close_menu();
                 }
             });
@@ -115,14 +131,14 @@ impl PixelArtEditor {
             });
 
             ui.menu_button("Plugins", |ui| {
-                if ui.button("🔌 Plugin Manager").clicked() {
+                if ui.button("Plugin Manager").clicked() {
                     self.plugin_manager.show_plugin_dialog = true;
                     ui.close_menu();
                 }
                 ui.separator();
                 
                 // Show filter plugins
-                ui.label("🎨 Filters");
+                ui.label("Filters");
                 let filter_commands = self.plugin_manager.get_plugin_commands_by_category(crate::plugins::PluginCategory::Filter);
                 for command in filter_commands {
                     if ui.button(&command.name).clicked() {
@@ -134,7 +150,7 @@ impl PixelArtEditor {
                 ui.separator();
                 
                 // Show utility plugins
-                ui.label("🔧 Utilities");
+                ui.label("Utilities");
                 let utility_commands = self.plugin_manager.get_plugin_commands_by_category(crate::plugins::PluginCategory::Utility);
                 for command in utility_commands {
                     if ui.button(&command.name).clicked() {
@@ -148,7 +164,8 @@ impl PixelArtEditor {
                 ui.label("Left Click: Paint");
                 ui.label("Right Click: Erase");
                 ui.label("Alt + Click: Pick Color");
-                ui.label("Ctrl + Z: Undo");
+                ui.label("Ctrl+Z: Undo");
+                ui.label("Ctrl+Shift+Z: Redo");
             });
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -166,6 +183,7 @@ impl PixelArtEditor {
             .show(ctx, |ui| {
                 ui.heading("Keyboard Shortcuts");
                 ui.label("Ctrl+Z: Undo");
+                ui.label("Ctrl+Shift+Z: Redo");
                 ui.label("Alt+Click: Pick color (eyedropper)");
 
                 ui.heading("Mouse Controls");

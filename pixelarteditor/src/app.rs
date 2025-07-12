@@ -75,7 +75,9 @@ impl eframe::App for PixelArtEditor {
         }
 
         // Handle keyboard shortcuts
-        if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Z)) {
+        if ctx.input(|i| i.modifiers.ctrl && i.modifiers.shift && i.key_pressed(egui::Key::Z)) {
+            self.redo();
+        } else if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Z)) {
             self.undo();
         }
     }

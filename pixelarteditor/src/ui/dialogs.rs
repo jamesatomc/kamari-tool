@@ -27,7 +27,7 @@ impl PixelArtEditor {
                 if self.new_sprite_width > 200 || self.new_sprite_height > 200 {
                     ui.colored_label(
                         egui::Color32::from_rgb(255, 165, 0),
-                        format!("⚠️ Large canvas ({}x{}) may affect performance", 
+                        format!("WARNING: Large canvas ({}x{}) may affect performance", 
                                self.new_sprite_width, self.new_sprite_height)
                     );
                 }
@@ -35,7 +35,7 @@ impl PixelArtEditor {
                 if self.new_sprite_width > 500 || self.new_sprite_height > 500 {
                     ui.colored_label(
                         egui::Color32::from_rgb(255, 80, 80),
-                        "❌ Very large canvas - may cause lag"
+                        "ERROR: Very large canvas - may cause lag"
                     );
                 }
 
@@ -50,7 +50,7 @@ impl PixelArtEditor {
 
                 ui.separator();
                 ui.horizontal(|ui| {
-                    if ui.button("✅ Create").clicked() {
+                    if ui.button("Create").clicked() {
                         let w = self.new_sprite_width;
                         let h = self.new_sprite_height;
                         let bg = self.new_sprite_bg;
@@ -69,7 +69,7 @@ impl PixelArtEditor {
                         self.current_layer = 0;
                         self.show_new_sprite_dialog = false;
                     }
-                    if ui.button("❌ Cancel").clicked() {
+                    if ui.button("Cancel").clicked() {
                         self.show_new_sprite_dialog = false;
                     }
                 });
@@ -77,7 +77,7 @@ impl PixelArtEditor {
     }
 
     pub fn show_resize_dialog(&mut self, ctx: &egui::Context) {
-        egui::Window::new("📐 Resize Canvas")
+        egui::Window::new("Resize Canvas")
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
@@ -100,7 +100,7 @@ impl PixelArtEditor {
                 if self.resize_width > 200 || self.resize_height > 200 {
                     ui.colored_label(
                         egui::Color32::from_rgb(255, 165, 0),
-                        format!("⚠️ Large canvas ({}x{}) may affect performance", 
+                        format!("Warning: Large canvas ({}x{}) may affect performance", 
                                self.resize_width, self.resize_height)
                     );
                 }
@@ -108,7 +108,7 @@ impl PixelArtEditor {
                 if self.resize_width > 500 || self.resize_height > 500 {
                     ui.colored_label(
                         egui::Color32::from_rgb(255, 80, 80),
-                        "❌ Very large canvas - may cause lag"
+                        "Error: Very large canvas - may cause lag"
                     );
                 }
 
@@ -121,11 +121,11 @@ impl PixelArtEditor {
 
                 ui.separator();
                 ui.horizontal(|ui| {
-                    if ui.button("✅ Resize").clicked() {
+                    if ui.button("Resize").clicked() {
                         self.resize_canvas(self.resize_width, self.resize_height, self.resize_anchor);
                         self.show_resize_dialog = false;
                     }
-                    if ui.button("❌ Cancel").clicked() {
+                    if ui.button("Cancel").clicked() {
                         self.show_resize_dialog = false;
                     }
                 });

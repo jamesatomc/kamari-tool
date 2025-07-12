@@ -69,16 +69,17 @@ impl PixelArtEditor {
                                 }
 
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    let btn_size = egui::vec2(18.0, 18.0);                                    if ui.add(egui::Button::new("🗑").min_size(btn_size)).on_hover_text("Clear Layer").clicked() { 
+                                    let btn_size = egui::vec2(20.0, 18.0);
+                                    if ui.add(egui::Button::new("Clear").min_size(btn_size)).on_hover_text("Clear Layer").clicked() { 
                                         layer_to_clear = Some(i);
                                     }
-                                    if ui.add(egui::Button::new("📋").min_size(btn_size)).on_hover_text("Duplicate").clicked() { 
+                                    if ui.add(egui::Button::new("Copy").min_size(btn_size)).on_hover_text("Duplicate").clicked() { 
                                         layer_to_duplicate = Some(i);
                                     }
-                                    if layers_len > 1 && ui.add(egui::Button::new("🗑").min_size(btn_size)).on_hover_text("Delete").clicked() { 
+                                    if layers_len > 1 && ui.add(egui::Button::new("Del").min_size(btn_size)).on_hover_text("Delete").clicked() { 
                                         layer_to_remove = Some(i);
                                     }
-                                    if !is_renaming && ui.add(egui::Button::new("✏").min_size(btn_size)).on_hover_text("Rename").clicked() {
+                                    if !is_renaming && ui.add(egui::Button::new("Edit").min_size(btn_size)).on_hover_text("Rename").clicked() {
                                         self.renaming_layer = Some(i);
                                         self.rename_text = layer.name.clone();
                                     }
@@ -271,8 +272,8 @@ impl PixelArtEditor {
                                 }
 
                                 ui.horizontal(|ui| {
-                                    let btn_size = egui::vec2(18.0, 18.0);
-                                    if self.frames.len() > 1 && ui.add(egui::Button::new("🗑").min_size(btn_size)).on_hover_text("Delete Frame").clicked() { 
+                                    let btn_size = egui::vec2(20.0, 18.0);
+                                    if self.frames.len() > 1 && ui.add(egui::Button::new("Del").min_size(btn_size)).on_hover_text("Delete Frame").clicked() { 
                                         self.push_undo(); 
                                         self.frames.remove(i); 
                                         if self.current_frame >= self.frames.len() { 
@@ -280,7 +281,7 @@ impl PixelArtEditor {
                                         } 
                                         self.current_layer = 0; 
                                     }
-                                    if ui.add(egui::Button::new("📋").min_size(btn_size)).on_hover_text("Duplicate Frame").clicked() { 
+                                    if ui.add(egui::Button::new("Copy").min_size(btn_size)).on_hover_text("Duplicate Frame").clicked() { 
                                         self.push_undo(); 
                                         let new_frame = self.frames[i].clone(); 
                                         self.frames.insert(i + 1, new_frame); 

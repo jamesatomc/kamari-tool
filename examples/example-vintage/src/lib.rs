@@ -25,11 +25,16 @@ impl KamariPlugin for VintageFilter {
         let height = context.height();
         let center_x = width as f32 / 2.0;
         let center_y = height as f32 / 2.0;
-        let max_distance = ((center_x * center_x + center_y * center_y).sqrt());
+        let max_distance = (center_x * center_x + center_y * center_y).sqrt();
         
         for y in 0..height {
             for x in 0..width {
                 if let Some(pixel) = context.get_pixel(x, y) {
+                    // Skip transparent pixels
+                    if pixel.a == 0 {
+                        continue;
+                    }
+                    
                     // Apply sepia effect
                     let r = pixel.r as f32;
                     let g = pixel.g as f32;
@@ -41,7 +46,7 @@ impl KamariPlugin for VintageFilter {
                     
                     // Apply vignette effect
                     let distance = ((x as f32 - center_x).powi(2) + (y as f32 - center_y).powi(2)).sqrt();
-                    let vignette_factor = 1.0 - (distance / max_distance) * vignette_strength;
+                    let vignette_factor = (1.0 - (distance / max_distance) * vignette_strength).max(0.0);
                     
                     let final_r = (sepia_r * vignette_factor).clamp(0.0, 255.0) as u8;
                     let final_g = (sepia_g * vignette_factor).clamp(0.0, 255.0) as u8;
