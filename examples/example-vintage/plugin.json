@@ -1,0 +1,26 @@
+{
+    "name": "Vintage Filter",
+    "version": "1.0.0",
+    "description": "Applies a vintage photo effect with sepia and vignette",
+    "author": "Kamari Team",
+    "main": "example_vintage.dll",
+    "type": "filter",
+    "parameters": [
+        {
+            "name": "sepia_strength",
+            "type": "float",
+            "default": 0.5,
+            "min": 0.0,
+            "max": 1.0,
+            "description": "Strength of the sepia effect"
+        },
+        {
+            "name": "vignette_strength",
+            "type": "float",
+            "default": 0.3,
+            "min": 0.0,
+            "max": 1.0,
+            "description": "Strength of the vignette effect"
+        }
+    ]
+}

@@ -15,6 +15,9 @@ exclude = [
 # These are the core components of the "kanari-sdk" project.
 members = [
     "pixelarteditor",            # The main crate for the Kanari Art Editor.
+    "kamari-plugin-api",         # Plugin API for external plugins.
+    "examples/example-blur",     # Example blur plugin.
+    "examples/example-vintage",  # Example vintage filter plugin.
 ]
 
 # Profile Configurations: Define different build profiles for various scenarios.
