@@ -114,6 +114,36 @@ impl PixelArtEditor {
                 });
             });
 
+            ui.menu_button("Plugins", |ui| {
+                if ui.button("🔌 Plugin Manager").clicked() {
+                    self.plugin_manager.show_plugin_dialog = true;
+                    ui.close_menu();
+                }
+                ui.separator();
+                
+                // Show filter plugins
+                ui.label("🎨 Filters");
+                let filter_commands = self.plugin_manager.get_plugin_commands_by_category(crate::plugins::PluginCategory::Filter);
+                for command in filter_commands {
+                    if ui.button(&command.name).clicked() {
+                        self.execute_plugin_command(&command.id);
+                        ui.close_menu();
+                    }
+                }
+                
+                ui.separator();
+                
+                // Show utility plugins
+                ui.label("🔧 Utilities");
+                let utility_commands = self.plugin_manager.get_plugin_commands_by_category(crate::plugins::PluginCategory::Utility);
+                for command in utility_commands {
+                    if ui.button(&command.name).clicked() {
+                        self.execute_plugin_command(&command.id);
+                        ui.close_menu();
+                    }
+                }
+            });
+
             ui.menu_button("Help", |ui| {
                 ui.label("Left Click: Paint");
                 ui.label("Right Click: Erase");

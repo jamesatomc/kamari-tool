@@ -36,6 +36,10 @@ impl eframe::App for PixelArtEditor {
             self.show_export_dialog(ctx);
         }
 
+        // Show plugin dialogs
+        self.plugin_manager.show_plugin_manager(ctx);
+        self.plugin_manager.show_plugin_config(ctx);
+
         // Color Panel
         if self.show_color_panel {
             egui::SidePanel::left("color_panel")

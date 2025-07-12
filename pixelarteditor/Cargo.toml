@@ -15,3 +15,7 @@ rand = "0.8.5"
 # Font support for better icons
 fontdue = "0.7.3"
 ab_glyph = "0.2.26"
+# Plugin system dependencies
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+dirs = "5.0"

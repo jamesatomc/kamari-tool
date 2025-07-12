@@ -11,3 +11,4 @@ mod tools;
 mod file_operations;
 mod app;
 mod ui;
+pub mod plugins;

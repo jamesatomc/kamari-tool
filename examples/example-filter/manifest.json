@@ -1,0 +1,9 @@
+{
+  "name": "Example Filter Plugin",
+  "version": "1.0.0",
+  "author": "Kamari Tool",
+  "description": "An example filter plugin that demonstrates the plugin API",
+  "category": "Filter",
+  "aseprite_version": "1.0",
+  "entry_point": "filter.js"
+}

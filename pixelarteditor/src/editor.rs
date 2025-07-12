@@ -1,6 +1,7 @@
 use eframe::egui;
 use crate::types::{Tool, Layer, Frame, ExportFormat};
 use crate::constants::*;
+use crate::plugins::PluginManager;
 
 pub struct PixelArtEditor {
     pub frames: Vec<Frame>,
@@ -86,6 +87,9 @@ pub struct PixelArtEditor {
     pub cache_dirty: bool,
     pub last_frame_time: f64,
     pub frame_skip: usize,
+    
+    // Plugin system
+    pub plugin_manager: PluginManager,
 }
 
 impl Default for PixelArtEditor {
@@ -175,13 +179,18 @@ impl Default for PixelArtEditor {
             cache_dirty: true,
             last_frame_time: 0.0,
             frame_skip: 0,
+            
+            // Initialize plugin manager
+            plugin_manager: PluginManager::new(),
         }
     }
 }
 
 impl PixelArtEditor {
     pub fn new() -> Self {
-        Self::default()
+        let mut editor = Self::default();
+        editor.plugin_manager.initialize();
+        editor
     }
 
     pub fn push_undo(&mut self) {
@@ -453,5 +462,55 @@ impl PixelArtEditor {
     pub fn update_cache(&mut self, composed: Vec<Vec<egui::Color32>>) {
         self.render_cache = Some(composed);
         self.cache_dirty = false;
+    }
+
+    /// Execute a plugin command safely
+    pub fn execute_plugin_command(&mut self, command_id: &str) {
+        // This method allows safe execution of plugin commands without borrowing conflicts
+        match command_id {
+            "blur" => {
+                self.push_undo();
+                if let Some(layer) = self.frames.get_mut(self.current_frame)
+                    .and_then(|frame| frame.layers.get_mut(self.current_layer)) {
+                    let blur_plugin = crate::plugins::aseprite_plugin::BlurPlugin::new();
+                    blur_plugin.apply_blur(layer, 1.0);
+                }
+            }
+            "noise" => {
+                self.push_undo();
+                if let Some(layer) = self.frames.get_mut(self.current_frame)
+                    .and_then(|frame| frame.layers.get_mut(self.current_layer)) {
+                    let noise_plugin = crate::plugins::aseprite_plugin::NoisePlugin::new();
+                    noise_plugin.apply_noise(layer, 10.0);
+                }
+            }
+            "outline" => {
+                self.push_undo();
+                if let Some(layer) = self.frames.get_mut(self.current_frame)
+                    .and_then(|frame| frame.layers.get_mut(self.current_layer)) {
+                    let outline_plugin = crate::plugins::aseprite_plugin::OutlinePlugin::new();
+                    outline_plugin.apply_outline(layer, egui::Color32::BLACK, 1);
+                }
+            }
+            "pixelate" => {
+                self.push_undo();
+                if let Some(layer) = self.frames.get_mut(self.current_frame)
+                    .and_then(|frame| frame.layers.get_mut(self.current_layer)) {
+                    let pixelate_plugin = crate::plugins::aseprite_plugin::PixelatePlugin::new();
+                    pixelate_plugin.apply_pixelate(layer, 2);
+                }
+            }
+            "color_replace" => {
+                self.push_undo();
+                if let Some(layer) = self.frames.get_mut(self.current_frame)
+                    .and_then(|frame| frame.layers.get_mut(self.current_layer)) {
+                    let color_replace_plugin = crate::plugins::aseprite_plugin::ColorReplacementPlugin::new();
+                    color_replace_plugin.replace_color(layer, egui::Color32::BLACK, egui::Color32::WHITE, 0);
+                }
+            }
+            _ => {
+                eprintln!("Unknown plugin command: {}", command_id);
+            }
+        }
     }
 }
