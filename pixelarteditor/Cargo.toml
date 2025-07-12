@@ -1,0 +1,17 @@
+[package]
+name = "pixelarteditor"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+eframe = "0.31.1"
+image = "0.25.6"
+egui = "0.31.1"
+egui_extras = "0.31.1"
+rfd = "0.15.3"
+unicode-normalization = "0.1.22"
+unicode-segmentation = "1.10.1"
+rand = "0.8.5"
+# Font support for better icons
+fontdue = "0.7.3"
+ab_glyph = "0.2.26"
