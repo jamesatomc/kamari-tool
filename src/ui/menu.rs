@@ -73,6 +73,45 @@ impl PixelArtEditor {
                 ui.checkbox(&mut self.show_color_panel, "Show Colors");
                 ui.separator();
                 ui.checkbox(&mut self.show_grid, "Show Grid");
+                ui.separator();
+                ui.checkbox(&mut self.onion_skinning, "Onion Skinning");
+                if self.onion_skinning {
+                    ui.horizontal(|ui| {
+                        ui.label("Previous:");
+                        ui.add(egui::DragValue::new(&mut self.onion_prev_frames).range(0..=5));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Next:");
+                        ui.add(egui::DragValue::new(&mut self.onion_next_frames).range(0..=5));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Opacity:");
+                        ui.add(egui::Slider::new(&mut self.onion_opacity, 0.1..=1.0));
+                    });
+                }
+            });
+
+            ui.menu_button("Tools", |ui| {
+                ui.checkbox(&mut self.pixel_perfect_mode, "Pixel Perfect Mode");
+                ui.separator();
+                ui.checkbox(&mut self.symmetry_mode, "Symmetry Mode");
+                if self.symmetry_mode {
+                    ui.checkbox(&mut self.symmetry_axis.0, "Horizontal Symmetry");
+                    ui.checkbox(&mut self.symmetry_axis.1, "Vertical Symmetry");
+                }
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.label("Brush Size:");
+                    ui.add(egui::DragValue::new(&mut self.brush_size).range(1..=10));
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Spray Size:");
+                    ui.add(egui::DragValue::new(&mut self.spray_size).range(1..=20));
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Spray Intensity:");
+                    ui.add(egui::Slider::new(&mut self.spray_intensity, 0.1..=1.0));
+                });
             });
 
             ui.menu_button("Help", |ui| {

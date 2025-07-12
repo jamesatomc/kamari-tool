@@ -1,5 +1,5 @@
 use eframe::egui;
-use crate::types::{Tool, Layer, Frame};
+use crate::types::{Tool, Layer, Frame, ExportFormat};
 use crate::constants::*;
 
 pub struct PixelArtEditor {
@@ -54,6 +54,38 @@ pub struct PixelArtEditor {
     pub fill_shape: bool,
     pub fill_outline: bool,
     pub preview_overlay: Option<Vec<Vec<egui::Color32>>>,
+    
+    // Layer renaming state
+    pub renaming_layer: Option<usize>,
+    pub rename_text: String,
+    
+    // Multi-file saving state
+    pub show_export_dialog: bool,
+    pub export_format: ExportFormat,
+    pub export_individual_layers: bool,
+    pub export_all_frames: bool,
+    
+    // Onion skinning
+    pub onion_skinning: bool,
+    pub onion_prev_frames: usize,
+    pub onion_next_frames: usize,
+    pub onion_opacity: f32,
+    
+    // Advanced color palette
+    pub custom_palettes: Vec<Vec<egui::Color32>>,
+    pub active_palette: usize,
+    pub palette_names: Vec<String>,
+    
+    // Pixel-perfect tools
+    pub pixel_perfect_mode: bool,
+    pub symmetry_mode: bool,
+    pub symmetry_axis: (bool, bool), // (horizontal, vertical)
+    
+    // Performance optimization
+    pub render_cache: Option<Vec<Vec<egui::Color32>>>,
+    pub cache_dirty: bool,
+    pub last_frame_time: f64,
+    pub frame_skip: usize,
 }
 
 impl Default for PixelArtEditor {
@@ -109,6 +141,40 @@ impl Default for PixelArtEditor {
             fill_shape: false,
             fill_outline: false,
             preview_overlay: None,
+            
+            // Initialize new fields
+            renaming_layer: None,
+            rename_text: String::new(),
+            show_export_dialog: false,
+            export_format: ExportFormat::PNG,
+            export_individual_layers: false,
+            export_all_frames: false,
+            
+            // Initialize onion skinning
+            onion_skinning: false,
+            onion_prev_frames: 1,
+            onion_next_frames: 1,
+            onion_opacity: 0.3,
+            
+            // Initialize advanced color palette
+            custom_palettes: vec![
+                get_default_palette(),
+                vec![egui::Color32::BLACK, egui::Color32::WHITE, egui::Color32::GRAY, egui::Color32::DARK_GRAY],
+                vec![egui::Color32::RED, egui::Color32::GREEN, egui::Color32::BLUE, egui::Color32::YELLOW],
+            ],
+            active_palette: 0,
+            palette_names: vec!["Default".to_string(), "Grayscale".to_string(), "Primary".to_string()],
+            
+            // Initialize pixel-perfect tools
+            pixel_perfect_mode: true,
+            symmetry_mode: false,
+            symmetry_axis: (false, false),
+            
+            // Initialize performance optimization
+            render_cache: None,
+            cache_dirty: true,
+            last_frame_time: 0.0,
+            frame_skip: 0,
         }
     }
 }
@@ -139,6 +205,13 @@ impl PixelArtEditor {
     }
 
     pub fn get_composed_grid(&self) -> Vec<Vec<egui::Color32>> {
+        // Use cache if available and not dirty
+        if let Some(ref cache) = self.render_cache {
+            if !self.cache_dirty {
+                return cache.clone();
+            }
+        }
+
         let frame_idx = if self.animation_playing {
             self.animation_frame
         } else {
@@ -150,6 +223,28 @@ impl PixelArtEditor {
         let height = frame.layers[0].height();
         let mut composed = vec![vec![egui::Color32::TRANSPARENT; width]; height];
 
+        // Add onion skinning if enabled
+        if self.onion_skinning && !self.animation_playing {
+            // Draw previous frames
+            for i in 1..=self.onion_prev_frames {
+                if frame_idx >= i {
+                    let prev_frame = &self.frames[frame_idx - i];
+                    let opacity = self.onion_opacity * (1.0 - (i as f32 * 0.2));
+                    self.compose_frame_with_opacity(prev_frame, &mut composed, opacity, egui::Color32::BLUE);
+                }
+            }
+            
+            // Draw next frames
+            for i in 1..=self.onion_next_frames {
+                if frame_idx + i < self.frames.len() {
+                    let next_frame = &self.frames[frame_idx + i];
+                    let opacity = self.onion_opacity * (1.0 - (i as f32 * 0.2));
+                    self.compose_frame_with_opacity(next_frame, &mut composed, opacity, egui::Color32::RED);
+                }
+            }
+        }
+
+        // Draw current frame
         for layer in &frame.layers {
             if !layer.visible {
                 continue;
@@ -178,20 +273,50 @@ impl PixelArtEditor {
         composed
     }
 
+    fn compose_frame_with_opacity(&self, frame: &Frame, composed: &mut Vec<Vec<egui::Color32>>, opacity: f32, tint: egui::Color32) {
+        let width = composed[0].len();
+        let height = composed.len();
+        
+        for layer in &frame.layers {
+            if !layer.visible {
+                continue;
+            }
+            for y in 0..height {
+                for x in 0..width {
+                    let c = layer.grid[y][x];
+                    if c.a() > 0 {
+                        // Apply tint and opacity
+                        let tinted = egui::Color32::from_rgba_unmultiplied(
+                            ((c.r() as f32 * 0.7) + (tint.r() as f32 * 0.3)) as u8,
+                            ((c.g() as f32 * 0.7) + (tint.g() as f32 * 0.3)) as u8,
+                            ((c.b() as f32 * 0.7) + (tint.b() as f32 * 0.3)) as u8,
+                            (c.a() as f32 * opacity) as u8
+                        );
+                        
+                        if tinted.a() > 0 {
+                            let bg = composed[y][x];
+                            composed[y][x] = blend_colors(bg, tinted);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     pub fn tool_icon(&self, tool: Tool) -> &'static str {
         match tool {
-            Tool::Pencil => "✏️",
-            Tool::Eraser => "🧽",
-            Tool::Bucket => "🪣", 
-            Tool::Eyedropper => "👁️",
-            Tool::Move => "↔️",
-            Tool::Line => "📏",
-            Tool::Rectangle => "⬜",
-            Tool::Circle => "⭕",
-            Tool::Select => "🔲",
-            Tool::Lasso => "🔗",
-            Tool::Spray => "💨",
-            Tool::Dither => "🌐",
+            Tool::Pencil => "✎",      // Pencil icon
+            Tool::Eraser => "⌫",      // Erase icon
+            Tool::Bucket => "🪣",     // Bucket icon (if supported, else fallback)
+            Tool::Eyedropper => "🎨",  // Eyedropper icon
+            Tool::Move => "✥",        // Move icon
+            Tool::Line => "📏",       // Line icon
+            Tool::Rectangle => "▭",   // Rectangle icon
+            Tool::Circle => "○",      // Circle icon
+            Tool::Select => "⬚",      // Select icon
+            Tool::Lasso => "◯",       // Lasso icon
+            Tool::Spray => "💨",      // Spray icon
+            Tool::Dither => "▦",      // Dither icon
         }
     }
     
@@ -257,5 +382,76 @@ impl PixelArtEditor {
             }
         }
         new_grid
+    }
+
+    /// Applies a simple 2x2 Bayer dither pattern at the given pixel location.
+    pub fn apply_dither(&mut self, x: usize, y: usize, color: egui::Color32) {
+        let layer = self.get_active_layer_mut();
+        let width = layer.width();
+        let height = layer.height();
+
+        // 2x2 Bayer matrix
+        let bayer = [[0, 2], [3, 1]];
+        for dy in 0..2 {
+            for dx in 0..2 {
+                let px = x + dx;
+                let py = y + dy;
+                if px < width && py < height {
+                    // Apply color based on threshold
+                    if bayer[dy][dx] < 2 {
+                        layer.grid[py][px] = color;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Paint with symmetry if enabled
+    pub fn paint_with_symmetry(&mut self, x: usize, y: usize, color: egui::Color32) {
+        let width = self.get_active_layer().width();
+        let height = self.get_active_layer().height();
+        let symmetry_mode = self.symmetry_mode;
+        let symmetry_axis = self.symmetry_axis;
+        
+        let layer = self.get_active_layer_mut();
+        
+        // Paint the main pixel
+        if x < width && y < height {
+            layer.grid[y][x] = color;
+        }
+        
+        // Paint symmetry pixels if enabled
+        if symmetry_mode {
+            if symmetry_axis.0 { // Horizontal symmetry
+                let sym_x = width - 1 - x;
+                if sym_x < width && y < height {
+                    layer.grid[y][sym_x] = color;
+                }
+            }
+            
+            if symmetry_axis.1 { // Vertical symmetry
+                let sym_y = height - 1 - y;
+                if x < width && sym_y < height {
+                    layer.grid[sym_y][x] = color;
+                }
+            }
+            
+            if symmetry_axis.0 && symmetry_axis.1 { // Both axes
+                let sym_x = width - 1 - x;
+                let sym_y = height - 1 - y;
+                if sym_x < width && sym_y < height {
+                    layer.grid[sym_y][sym_x] = color;
+                }
+            }
+        }
+    }
+
+    pub fn invalidate_cache(&mut self) {
+        self.cache_dirty = true;
+    }
+
+    pub fn update_cache(&mut self, composed: Vec<Vec<egui::Color32>>) {
+        self.render_cache = Some(composed);
+        self.cache_dirty = false;
     }
 }

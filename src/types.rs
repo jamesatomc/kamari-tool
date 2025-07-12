@@ -16,6 +16,15 @@ pub enum Tool {
     Dither,
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum ExportFormat {
+    PNG,
+    JPG,
+    BMP,
+    Aseprite,
+
+}
+
 #[derive(Clone)]
 pub struct Layer {
     pub name: String,

@@ -1,20 +1,17 @@
 use eframe::egui;
 use crate::editor::PixelArtEditor;
 use crate::types::{Layer, Frame};
-use crate::constants::*;
 
 impl PixelArtEditor {
     pub fn show_layers_panel(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         ui.set_min_width(180.0);
-        ui.heading("📚 Layers");
+        ui.heading("Layers");
         ui.separator();
 
         let mut layer_to_remove = None;
         let mut add_layer = false;
         let mut layer_to_duplicate = None;
         let mut layer_to_clear = None;
-        let mut layer_to_rename = None;
-        let mut new_layer_name = String::new();
         let mut should_move_up = false;
         let mut should_move_down = false;
 
@@ -29,6 +26,7 @@ impl PixelArtEditor {
             .show(ui, |ui| {
                 for (i, layer) in frame.layers.iter_mut().enumerate().rev() {
                     let is_current = current_layer == i;
+                    let is_renaming = self.renaming_layer == Some(i);
 
                     egui::Frame::group(ui.style())
                         .fill(if is_current {
@@ -47,25 +45,42 @@ impl PixelArtEditor {
                                     ctx.request_repaint(); 
                                 }
 
-                                if ui.selectable_label(is_current, &layer.name).clicked() { 
-                                    self.current_layer = i; 
+                                if is_renaming {
+                                    let text_edit = ui.text_edit_singleline(&mut self.rename_text);
+                                    if text_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                        if !self.rename_text.is_empty() {
+                                            layer.name = self.rename_text.clone();
+                                        }
+                                        self.renaming_layer = None;
+                                        self.rename_text.clear();
+                                    }
+                                    if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                                        self.renaming_layer = None;
+                                        self.rename_text.clear();
+                                    }
+                                    // Auto-focus when starting to rename
+                                    if text_edit.gained_focus() {
+                                        text_edit.request_focus();
+                                    }
+                                } else {
+                                    if ui.selectable_label(is_current, &layer.name).clicked() { 
+                                        self.current_layer = i; 
+                                    }
                                 }
 
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    let btn_size = egui::vec2(18.0, 18.0);
-
-                                    if ui.add(egui::Button::new("🧹").min_size(btn_size)).on_hover_text("Clear Layer").clicked() { 
-                                        layer_to_clear = Some(i); 
+                                    let btn_size = egui::vec2(18.0, 18.0);                                    if ui.add(egui::Button::new("🗑").min_size(btn_size)).on_hover_text("Clear Layer").clicked() { 
+                                        layer_to_clear = Some(i);
                                     }
                                     if ui.add(egui::Button::new("📋").min_size(btn_size)).on_hover_text("Duplicate").clicked() { 
-                                        layer_to_duplicate = Some(i); 
+                                        layer_to_duplicate = Some(i);
                                     }
                                     if layers_len > 1 && ui.add(egui::Button::new("🗑").min_size(btn_size)).on_hover_text("Delete").clicked() { 
-                                        layer_to_remove = Some(i); 
+                                        layer_to_remove = Some(i);
                                     }
-                                    if ui.add(egui::Button::new("✏️").min_size(btn_size)).on_hover_text("Rename").clicked() { 
-                                        layer_to_rename = Some(i); 
-                                        new_layer_name = layer.name.clone(); 
+                                    if !is_renaming && ui.add(egui::Button::new("✏").min_size(btn_size)).on_hover_text("Rename").clicked() {
+                                        self.renaming_layer = Some(i);
+                                        self.rename_text = layer.name.clone();
                                     }
                                 });
                             });
@@ -82,17 +97,29 @@ impl PixelArtEditor {
                 }
             });
 
-        ui.separator();
-
+        ui.separator();        
         ui.horizontal(|ui| {
-            if frame.layers.len() < MAX_LAYERS && ui.button("➕ Add Layer").clicked() { 
-                add_layer = true; 
+            let canvas_width = if !self.frames[self.current_frame].layers.is_empty() { 
+                self.frames[self.current_frame].layers[0].width() 
+            } else { 0 };
+            let canvas_height = if !self.frames[self.current_frame].layers.is_empty() { 
+                self.frames[self.current_frame].layers[0].height() 
+            } else { 0 };
+            let max_layers = crate::constants::get_max_layers_for_size(canvas_width, canvas_height);
+            let current_layer_count = self.frames[self.current_frame].layers.len();
+            
+            if current_layer_count < max_layers && ui.button("+ Add Layer").clicked() { 
+                add_layer = true;
             }
-            if ui.button("🔼").on_hover_text("Move Layer Up").clicked() && self.current_layer < frame.layers.len() - 1 { 
-                should_move_up = true; 
+            if current_layer_count >= max_layers {
+                ui.colored_label(egui::Color32::from_rgb(255, 165, 0), 
+                    format!("Max layers ({}) reached for {}x{} canvas", max_layers, canvas_width, canvas_height));
             }
-            if ui.button("🔽").on_hover_text("Move Layer Down").clicked() && self.current_layer > 0 { 
-                should_move_down = true; 
+            if ui.button("▲").on_hover_text("Move Layer Up").clicked() && self.current_layer < current_layer_count - 1 { 
+                should_move_up = true;
+            }
+            if ui.button("▼").on_hover_text("Move Layer Down").clicked() && self.current_layer > 0 { 
+                should_move_down = true;
             }
         });
 
@@ -151,36 +178,11 @@ impl PixelArtEditor {
             frame.layers.swap(self.current_layer, self.current_layer - 1); 
             self.current_layer -= 1; 
         }
-
-        // Handle layer renaming dialog
-        if let Some(layer_idx) = layer_to_rename {
-            egui::Window::new("Rename Layer")
-                .collapsible(false)
-                .resizable(false)
-                .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-                .show(ctx, |ui| {
-                    ui.horizontal(|ui| { 
-                        ui.label("Name:"); 
-                        ui.text_edit_singleline(&mut new_layer_name); 
-                    });
-                    ui.separator();
-                    ui.horizontal(|ui| { 
-                        if ui.button("✅ Rename").clicked() { 
-                            if !new_layer_name.is_empty() { 
-                                self.frames[self.current_frame].layers[layer_idx].name = new_layer_name.clone(); 
-                            } 
-                        } 
-                        if ui.button("❌ Cancel").clicked() { 
-                            // Cancel action
-                        } 
-                    });
-                });
-        }
     }
 
     pub fn show_frames_panel(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         ui.set_min_width(180.0);
-        ui.heading("🎬 Frames");
+        ui.heading("Frames");
         ui.separator();
 
         let frame_infos: Vec<(usize, bool)> = (0..self.frames.len())
@@ -295,7 +297,16 @@ impl PixelArtEditor {
 
         ui.separator();
         ui.horizontal(|ui| {
-            if self.frames.len() < MAX_FRAMES && ui.button("➕ Add Frame").clicked() { 
+            let canvas_width = if !self.frames[self.current_frame].layers.is_empty() { 
+                self.frames[self.current_frame].layers[0].width() 
+            } else { 0 };
+            let canvas_height = if !self.frames[self.current_frame].layers.is_empty() { 
+                self.frames[self.current_frame].layers[0].height() 
+            } else { 0 };
+            let max_frames = crate::constants::get_max_frames_for_size(canvas_width, canvas_height);
+            let current_frame_count = self.frames.len();
+            
+            if current_frame_count < max_frames && ui.button("+ Add Frame").clicked() { 
                 self.push_undo(); 
                 if self.frames.is_empty() { 
                     self.frames.push(Frame::default()); 
@@ -305,6 +316,10 @@ impl PixelArtEditor {
                     self.current_frame += 1; 
                 } 
                 self.current_layer = 0; 
+            }
+            if current_frame_count >= max_frames {
+                ui.colored_label(egui::Color32::from_rgb(255, 165, 0), 
+                    format!("Max frames ({}) reached for {}x{} canvas", max_frames, canvas_width, canvas_height));
             }
             if ui.button("⏮").on_hover_text("First Frame").clicked() && !self.frames.is_empty() { 
                 self.current_frame = 0; 

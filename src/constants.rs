@@ -4,6 +4,34 @@ pub const PIXEL_SIZE: f32 = 24.0;
 pub const MAX_LAYERS: usize = 64;
 pub const MAX_FRAMES: usize = 64;
 
+// Performance limits
+pub const PERFORMANCE_WARNING_SIZE: usize = 200;
+pub const PERFORMANCE_CRITICAL_SIZE: usize = 500;
+pub const MAX_SAFE_CANVAS_SIZE: usize = 1024;
+
+// Dynamic limits based on canvas size
+pub fn get_max_layers_for_size(width: usize, height: usize) -> usize {
+    let total_pixels = width * height;
+    if total_pixels > 250_000 { // 500x500
+        16
+    } else if total_pixels > 100_000 { // ~316x316
+        32
+    } else {
+        MAX_LAYERS
+    }
+}
+
+pub fn get_max_frames_for_size(width: usize, height: usize) -> usize {
+    let total_pixels = width * height;
+    if total_pixels > 250_000 { // 500x500
+        8
+    } else if total_pixels > 100_000 { // ~316x316
+        16
+    } else {
+        MAX_FRAMES
+    }
+}
+
 pub fn get_default_palette() -> Vec<egui::Color32> {
     vec![
         egui::Color32::BLACK,

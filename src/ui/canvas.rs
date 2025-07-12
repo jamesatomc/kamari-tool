@@ -17,9 +17,16 @@ impl PixelArtEditor {
 
                 let (canvas_rect, _) = ui.allocate_exact_size(canvas_size, egui::Sense::hover());
 
-                // Draw the canvas background and pixels
-                for y in 0..height {
-                    for x in 0..width {
+                // Performance optimization: Only draw visible pixels
+                let visible_rect = ui.clip_rect();
+                let min_x = ((visible_rect.min.x - canvas_rect.min.x) / pixel_size).floor().max(0.0) as usize;
+                let max_x = ((visible_rect.max.x - canvas_rect.min.x) / pixel_size).ceil().min(width as f32) as usize;
+                let min_y = ((visible_rect.min.y - canvas_rect.min.y) / pixel_size).floor().max(0.0) as usize;
+                let max_y = ((visible_rect.max.y - canvas_rect.min.y) / pixel_size).ceil().min(height as f32) as usize;
+
+                // Draw the canvas background and pixels (only visible ones)
+                for y in min_y..max_y {
+                    for x in min_x..max_x {
                         let pixel_rect = egui::Rect::from_min_size(
                             canvas_rect.min + egui::vec2(x as f32 * pixel_size, y as f32 * pixel_size),
                             egui::vec2(pixel_size, pixel_size),
@@ -39,33 +46,9 @@ impl PixelArtEditor {
                         if pixel_color.a() > 0 {
                             ui.painter().rect_filled(pixel_rect, 0.0, pixel_color);
                         }
-                        
-                        impl PixelArtEditor {
-                            /// Applies a simple 2x2 Bayer dither pattern at the given pixel location.
-                            pub fn apply_dither(&mut self, x: usize, y: usize, color: egui::Color32) {
-                                let layer = self.get_active_layer_mut();
-                                let width = layer.width();
-                                let height = layer.height();
-                        
-                                // 2x2 Bayer matrix
-                                let bayer = [[0, 2], [3, 1]];
-                                for dy in 0..2 {
-                                    for dx in 0..2 {
-                                        let px = x + dx;
-                                        let py = y + dy;
-                                        if px < width && py < height {
-                                            // Apply color based on threshold
-                                            if bayer[dy][dx] < 2 {
-                                                layer.grid[py][px] = color;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
 
-                        // Draw grid lines if enabled
-                        if self.show_grid {
+                        // Draw grid lines if enabled (only at certain zoom levels)
+                        if self.show_grid && pixel_size > 2.0 {
                             ui.painter().rect_filled(
                                 egui::Rect::from_min_size(
                                     pixel_rect.min,
@@ -257,20 +240,28 @@ impl PixelArtEditor {
                 }
                 Tool::Bucket => {
                     self.push_undo();
-                    // Simple flood fill implementation
-                    let original_color = composed[y][x];
+                    // Simple flood fill implementation - fix to prevent infinite loops
                     let new_color = self.selected_color;
-                    if original_color != new_color {
-                        let layer = self.get_active_layer_mut();
-                        let width = layer.width();
-                        let height = layer.height();
-                        if x < width && y < height {
+                    let layer = self.get_active_layer_mut();
+                    let width = layer.width();
+                    let height = layer.height();
+                    
+                    if x < width && y < height {
+                        let original_color = layer.grid[y][x]; // Use actual layer color, not composed
+                        
+                        if original_color != new_color {
                             let mut stack = vec![(x, y)];
+                            let mut visited = vec![vec![false; width]; height];
+                            
                             while let Some((cx, cy)) = stack.pop() {
-                                if cx >= width || cy >= height || layer.grid[cy][cx] != original_color {
+                                if cx >= width || cy >= height || visited[cy][cx] || layer.grid[cy][cx] != original_color {
                                     continue;
                                 }
+                                
+                                visited[cy][cx] = true;
                                 layer.grid[cy][cx] = new_color;
+                                
+                                // Add neighbors to stack
                                 if cx > 0 {
                                     stack.push((cx - 1, cy));
                                 }

@@ -100,5 +100,75 @@ impl PixelArtEditor {
                     }
                 }
             });
+
+        ui.separator();
+        
+        // Palette selection
+        ui.horizontal(|ui| {
+            ui.label("Palette:");
+            egui::ComboBox::from_id_salt("palette_selector")
+                .selected_text(&self.palette_names[self.active_palette])
+                .show_ui(ui, |ui| {
+                    for (i, name) in self.palette_names.iter().enumerate() {
+                        ui.selectable_value(&mut self.active_palette, i, name);
+                    }
+                });
+        });
+
+        // Show active palette
+        let palette = &self.custom_palettes[self.active_palette];
+        ui.label("Palette Colors:");
+        let colors_per_row = 8;
+        let color_size = 20.0; // Smaller size for better performance
+        
+        // Use scrollable area for large palettes
+        egui::ScrollArea::vertical()
+            .max_height(200.0)
+            .show(ui, |ui| {
+                for (i, _color) in palette.iter().enumerate() {
+                    if i % colors_per_row == 0 {
+                        ui.horizontal(|ui| {
+                            for j in 0..colors_per_row {
+                                let idx = i + j;
+                                if idx < palette.len() {
+                                    let color = palette[idx];
+                                    let (rect, response) = ui.allocate_exact_size(
+                                        egui::vec2(color_size, color_size),
+                                        egui::Sense::click(),
+                                    );
+                                    
+                                    ui.painter().rect_filled(rect, 2.0, color);
+                                    
+                                    // Only draw stroke for selected colors to improve performance
+                                    if self.selected_color == color || self.secondary_color == color {
+                                        let stroke = egui::Stroke::new(1.0, 
+                                            if self.selected_color == color {
+                                                egui::Color32::WHITE
+                                            } else {
+                                                egui::Color32::GRAY
+                                            }
+                                        );
+                                        ui.painter().rect_stroke(rect, 2.0, stroke, egui::epaint::StrokeKind::Outside);
+                                    }
+                                    
+                                    if response.clicked() {
+                                        self.selected_color = color;
+                                    }
+                                    if response.secondary_clicked() {
+                                        self.secondary_color = color;
+                                    }
+                                }
+                            }
+                        });
+                    }
+                }
+            });
+        
+        if ui.button("+ Add Current Color").clicked() {
+            let palette = &mut self.custom_palettes[self.active_palette];
+            if !palette.contains(&self.selected_color) {
+                palette.push(self.selected_color);
+            }
+        }
     }
 }

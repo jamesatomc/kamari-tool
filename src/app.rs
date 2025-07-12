@@ -32,6 +32,10 @@ impl eframe::App for PixelArtEditor {
             self.show_resize_dialog(ctx);
         }
 
+        if self.show_export_dialog {
+            self.show_export_dialog(ctx);
+        }
+
         // Color Panel
         if self.show_color_panel {
             egui::SidePanel::left("color_panel")

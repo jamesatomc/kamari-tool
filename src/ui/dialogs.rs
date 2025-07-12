@@ -13,15 +13,31 @@ impl PixelArtEditor {
                     ui.label("Canvas Size:");
                     ui.add(
                         egui::DragValue::new(&mut self.new_sprite_width)
-                            .range(1..=4096)
+                            .range(1..=1024)
                             .prefix("W: "),
                     );
                     ui.add(
                         egui::DragValue::new(&mut self.new_sprite_height)
-                            .range(1..=4096)
+                            .range(1..=1024)
                             .prefix("H: "),
                     );
                 });
+
+                // Warning for large canvases
+                if self.new_sprite_width > 200 || self.new_sprite_height > 200 {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(255, 165, 0),
+                        format!("⚠️ Large canvas ({}x{}) may affect performance", 
+                               self.new_sprite_width, self.new_sprite_height)
+                    );
+                }
+
+                if self.new_sprite_width > 500 || self.new_sprite_height > 500 {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(255, 80, 80),
+                        "❌ Very large canvas - may cause lag"
+                    );
+                }
 
                 ui.horizontal(|ui| {
                     ui.label("Background:");
@@ -70,15 +86,31 @@ impl PixelArtEditor {
                     ui.label("New Size:");
                     ui.add(
                         egui::DragValue::new(&mut self.resize_width)
-                            .range(1..=4096)
+                            .range(1..=1024)
                             .prefix("W: "),
                     );
                     ui.add(
                         egui::DragValue::new(&mut self.resize_height)
-                            .range(1..=4096)
+                            .range(1..=1024)
                             .prefix("H: "),
                     );
                 });
+
+                // Warning for large canvases
+                if self.resize_width > 200 || self.resize_height > 200 {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(255, 165, 0),
+                        format!("⚠️ Large canvas ({}x{}) may affect performance", 
+                               self.resize_width, self.resize_height)
+                    );
+                }
+
+                if self.resize_width > 500 || self.resize_height > 500 {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(255, 80, 80),
+                        "❌ Very large canvas - may cause lag"
+                    );
+                }
 
                 ui.horizontal(|ui| {
                     ui.label("Anchor:");
