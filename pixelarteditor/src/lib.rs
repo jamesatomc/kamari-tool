@@ -7,8 +7,6 @@ pub use constants::*;
 mod constants;
 mod types;
 mod editor;
-mod tools;
-mod file_operations;
 mod app;
 mod ui;
 pub mod plugins;

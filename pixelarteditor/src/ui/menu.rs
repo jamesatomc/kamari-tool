@@ -15,14 +15,6 @@ impl PixelArtEditor {
                     ui.close_menu();
                 }
                 if ui
-                    .button("Save as PNG")
-                    .on_hover_text("Save as pixel_art.png")
-                    .clicked()
-                {
-                    self.save_as_png("pixel_art.png");
-                    ui.close_menu();
-                }
-                if ui
                     .button("Save As...")
                     .on_hover_text("Save as... (choose file)")
                     .clicked()
@@ -89,6 +81,30 @@ impl PixelArtEditor {
                 ui.checkbox(&mut self.show_color_panel, "Show Colors");
                 ui.separator();
                 ui.checkbox(&mut self.show_grid, "Show Grid");
+                
+                // Zoom controls
+                ui.separator();
+                ui.label("Zoom:");
+                ui.horizontal(|ui| {
+                    if ui.button("-").clicked() {
+                        self.zoom_out();
+                    }
+                    ui.label(format!("{:.1}%", self.zoom * 100.0));
+                    if ui.button("+").clicked() {
+                        self.zoom_in();
+                    }
+                    if ui.button("Reset").clicked() {
+                        self.reset_zoom();
+                    }
+                });
+                
+                // Canvas controls
+                ui.separator();
+                if ui.button("Center Canvas").clicked() {
+                    self.center_canvas();
+                    ui.close_menu();
+                }
+                
                 ui.separator();
                 ui.checkbox(&mut self.onion_skinning, "Onion Skinning");
                 if self.onion_skinning {
@@ -118,7 +134,7 @@ impl PixelArtEditor {
                 ui.separator();
                 ui.horizontal(|ui| {
                     ui.label("Brush Size:");
-                    ui.add(egui::DragValue::new(&mut self.brush_size).range(1..=10));
+                    ui.add(egui::DragValue::new(&mut self.brush_size).range(1..=100));
                 });
                 ui.horizontal(|ui| {
                     ui.label("Spray Size:");
@@ -184,12 +200,19 @@ impl PixelArtEditor {
                 ui.heading("Keyboard Shortcuts");
                 ui.label("Ctrl+Z: Undo");
                 ui.label("Ctrl+Shift+Z: Redo");
+                ui.separator();
+                ui.label("Ctrl+ +: Zoom In");
+                ui.label("Ctrl+ -: Zoom Out");
+                ui.label("Ctrl+0: Reset Zoom");
+                ui.label("Ctrl+Home: Center Canvas");
+                ui.separator();
                 ui.label("Alt+Click: Pick color (eyedropper)");
 
                 ui.heading("Mouse Controls");
                 ui.label("Left click: Draw with selected tool");
                 ui.label("Right click: Erase");
                 ui.label("Drag: Continue drawing/erasing");
+                ui.label("Mouse Wheel: Zoom in/out (unlimited)");
 
                 ui.heading("Tools");
                 ui.label(format!("{} Pencil: Draw with selected color", self.tool_icon_safe(Tool::Pencil)));
@@ -249,7 +272,7 @@ impl PixelArtEditor {
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
                         ui.label("Brush Size");
-                        ui.add(egui::Slider::new(&mut self.brush_size, 1..=10).text(""));
+                        ui.add(egui::Slider::new(&mut self.brush_size, 1..=100).text(""));
                     });
                 });
 
@@ -266,14 +289,14 @@ impl PixelArtEditor {
                         ui.label("Zoom");
                         ui.horizontal(|ui| {
                             if ui.button("-").on_hover_text("Zoom Out").clicked() {
-                                self.zoom = (self.zoom - 0.25).max(0.5);
+                                self.zoom_out();
                             }
-                            ui.label(format!("{:.0}%", self.zoom * 100.0));
+                            ui.label(format!("{:.1}%", self.zoom * 100.0));
                             if ui.button("+").on_hover_text("Zoom In").clicked() {
-                                self.zoom = (self.zoom + 0.25).min(4.0);
+                                self.zoom_in();
                             }
                             if ui.button("Reset").on_hover_text("Reset Zoom").clicked() {
-                                self.zoom = 1.0;
+                                self.reset_zoom();
                             }
                         });
                     });

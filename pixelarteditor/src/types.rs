@@ -20,9 +20,21 @@ pub enum Tool {
 pub enum ExportFormat {
     PNG,
     JPG,
+    JPEG,
     BMP,
-    Aseprite,
-
+    GIF,
+    ICO,
+    PCX,
+    POC,
+    QOI,
+    SVG,
+    TGA,
+    WEBP,
+    ASE,
+    ASEPRITE,
+    CSS,
+    FLC,
+    FLI,
 }
 
 #[derive(Clone)]

@@ -80,5 +80,19 @@ impl eframe::App for PixelArtEditor {
         } else if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Z)) {
             self.undo();
         }
+        
+        // Zoom shortcuts
+        if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Plus)) {
+            self.zoom_in();
+        } else if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Minus)) {
+            self.zoom_out();
+        } else if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Num0)) {
+            self.reset_zoom();
+        }
+        
+        // Canvas navigation shortcuts
+        if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Home)) {
+            self.center_canvas();
+        }
     }
 }

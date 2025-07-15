@@ -5,17 +5,60 @@ use crate::constants::PIXEL_SIZE;
 
 impl PixelArtEditor {
     pub fn show_canvas(&mut self, ui: &mut egui::Ui) {
-        egui::ScrollArea::both()
+        let composed = self.get_composed_grid();
+        let height = composed.len();
+        let width = if height > 0 { composed[0].len() } else { 0 };
+
+        let pixel_size = PIXEL_SIZE * self.zoom;
+        let canvas_size = egui::vec2(width as f32 * pixel_size, height as f32 * pixel_size);
+
+        // Create a scroll area that centers the canvas
+        let scroll_area = egui::ScrollArea::both()
             .auto_shrink([false; 2])
-            .show(ui, |ui| {
-                let composed = self.get_composed_grid();
-                let height = composed.len();
-                let width = if height > 0 { composed[0].len() } else { 0 };
+            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded);
 
-                let pixel_size = PIXEL_SIZE * self.zoom;
-                let canvas_size = egui::vec2(width as f32 * pixel_size, height as f32 * pixel_size);
-
-                let (canvas_rect, _) = ui.allocate_exact_size(canvas_size, egui::Sense::hover());
+        let scroll_output = scroll_area.show(ui, |ui| {
+            // Handle mouse wheel zoom globally for the canvas area
+            let scroll_delta = ui.input(|i| i.smooth_scroll_delta);
+            if scroll_delta.y != 0.0 {
+                if scroll_delta.y > 0.0 {
+                    // Zoom in
+                    self.zoom_in();
+                } else {
+                    // Zoom out
+                    self.zoom_out();
+                }
+            }
+            
+            // Calculate the available space
+            let available_size = ui.available_size();
+            
+            // Calculate padding to center the canvas
+            let padding_x = (available_size.x - canvas_size.x).max(0.0) / 2.0;
+            let padding_y = (available_size.y - canvas_size.y).max(0.0) / 2.0;
+            
+            // Add padding around the canvas to center it
+            ui.allocate_space(egui::vec2(0.0, padding_y));
+            
+            ui.horizontal(|ui| {
+                ui.allocate_space(egui::vec2(padding_x, 0.0));
+                
+                // Allocate the canvas area
+                let (canvas_rect, _response) = ui.allocate_exact_size(canvas_size, egui::Sense::click_and_drag());
+                
+                // Handle canvas centering on first load
+                if self.canvas_center_on_start {
+                    self.canvas_center_on_start = false;
+                    // Center the canvas by setting initial scroll position
+                    if available_size.x > 0.0 && available_size.y > 0.0 {
+                        let center_x = (canvas_size.x - available_size.x) / 2.0;
+                        let center_y = (canvas_size.y - available_size.y) / 2.0;
+                        ui.scroll_to_rect(egui::Rect::from_min_size(
+                            egui::pos2(center_x, center_y),
+                            available_size
+                        ), Some(egui::Align::Center));
+                    }
+                }
 
                 // Performance optimization: Only draw visible pixels
                 let visible_rect = ui.clip_rect();
@@ -74,7 +117,15 @@ impl PixelArtEditor {
 
                 // Draw tool overlays
                 self.draw_tool_overlays(ui, &canvas_rect, width, height, pixel_size);
+                
+                ui.allocate_space(egui::vec2(padding_x, 0.0));
             });
+            
+            ui.allocate_space(egui::vec2(0.0, padding_y));
+        });
+
+        // Store scroll position for future reference
+        self.canvas_scroll_offset = scroll_output.state.offset;
     }
 
     fn draw_tool_overlays(&self, ui: &mut egui::Ui, canvas_rect: &egui::Rect, width: usize, height: usize, pixel_size: f32) {
@@ -174,6 +225,32 @@ impl PixelArtEditor {
                 ui.painter().line_segment([start, end], egui::Stroke::new(1.0, egui::Color32::YELLOW));
             }
         }
+
+        // Draw brush preview
+        if matches!(self.tool, Tool::Pencil | Tool::Eraser) && self.brush_size > 1 {
+            if let Some(hover_pos) = ui.input(|i| i.pointer.hover_pos()) {
+                if canvas_rect.contains(hover_pos) {
+                    let rel_pos = hover_pos - canvas_rect.min;
+                    let hover_x = (rel_pos.x / pixel_size) as usize;
+                    let hover_y = (rel_pos.y / pixel_size) as usize;
+                    
+                    if hover_x < width && hover_y < height {
+                        let brush_radius = (self.brush_size / 2) as f32;
+                        let center = canvas_rect.min + egui::vec2(
+                            hover_x as f32 * pixel_size + pixel_size / 2.0,
+                            hover_y as f32 * pixel_size + pixel_size / 2.0
+                        );
+                        
+                        // Draw brush preview circle
+                        ui.painter().circle_stroke(
+                            center,
+                            brush_radius * pixel_size,
+                            egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(255, 255, 255, 128))
+                        );
+                    }
+                }
+            }
+        }
     }
 
     fn handle_pixel_interaction(
@@ -226,17 +303,11 @@ impl PixelArtEditor {
                 Tool::Pencil => {
                     self.push_undo();
                     let selected_color = self.selected_color;
-                    let layer = self.get_active_layer_mut();
-                    if x < layer.width() && y < layer.height() {
-                        layer.grid[y][x] = selected_color;
-                    }
+                    self.paint_brush(x, y, selected_color);
                 }
                 Tool::Eraser => {
                     self.push_undo();
-                    let layer = self.get_active_layer_mut();
-                    if x < layer.width() && y < layer.height() {
-                        layer.grid[y][x] = egui::Color32::TRANSPARENT;
-                    }
+                    self.erase_brush(x, y);
                 }
                 Tool::Bucket => {
                     self.push_undo();
@@ -440,10 +511,7 @@ impl PixelArtEditor {
             }
         } else if interact_rect.secondary_clicked() {
             self.push_undo();
-            let layer = self.get_active_layer_mut();
-            if x < layer.width() && y < layer.height() {
-                layer.grid[y][x] = egui::Color32::TRANSPARENT;
-            }
+            self.erase_brush(x, y);
         }
 
         // Handle dragging
@@ -451,16 +519,10 @@ impl PixelArtEditor {
             match self.tool {
                 Tool::Pencil => {
                     let selected_color = self.selected_color;
-                    let layer = self.get_active_layer_mut();
-                    if x < layer.width() && y < layer.height() {
-                        layer.grid[y][x] = selected_color;
-                    }
+                    self.paint_brush(x, y, selected_color);
                 }
                 Tool::Eraser => {
-                    let layer = self.get_active_layer_mut();
-                    if x < layer.width() && y < layer.height() {
-                        layer.grid[y][x] = egui::Color32::TRANSPARENT;
-                    }
+                    self.erase_brush(x, y);
                 }
                 Tool::Spray => {
                     // Simple spray paint implementation

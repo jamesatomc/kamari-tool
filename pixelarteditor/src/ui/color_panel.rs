@@ -3,7 +3,7 @@ use crate::editor::PixelArtEditor;
 
 impl PixelArtEditor {
     pub fn show_color_panel(&mut self, ui: &mut egui::Ui) {
-        ui.heading("🎨 Colors");
+        ui.heading("Colors");
         ui.separator();
 
         egui::Frame::group(ui.style())
