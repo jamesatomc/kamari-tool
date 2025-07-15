@@ -82,6 +82,20 @@ impl PixelArtEditor {
                 ui.separator();
                 ui.checkbox(&mut self.show_grid, "Show Grid");
                 
+                // Animation controls
+                ui.separator();
+                ui.label("Animation:");
+                ui.horizontal(|ui| {
+                    if ui.checkbox(&mut self.animation_enabled, "Enable Tool Animations").changed() {
+                        if !self.animation_enabled {
+                            self.current_tool_animation = None;
+                            for (_, animation) in self.tool_animations.iter_mut() {
+                                animation.stop();
+                            }
+                        }
+                    }
+                });
+                
                 // Zoom controls
                 ui.separator();
                 ui.label("Zoom:");

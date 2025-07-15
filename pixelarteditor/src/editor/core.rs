@@ -1,7 +1,9 @@
 use eframe::egui;
-use crate::types::{Tool, Layer, Frame, ExportFormat};
+use crate::types::{Tool, Layer, Frame, ExportFormat, ToolAnimation, AnimationType};
 use crate::constants::*;
 use crate::plugins::PluginManager;
+use std::collections::HashMap;
+use std::time::Instant;
 
 /// Core editor state and data
 pub struct PixelArtEditor {
@@ -104,7 +106,15 @@ pub struct PixelArtEditor {
     
     // Plugin system
     pub plugin_manager: PluginManager,
+    
+    // Tool animations
+    pub tool_animations: HashMap<Tool, ToolAnimation>,
+    pub current_tool_animation: Option<ToolAnimation>,
+    pub animation_enabled: bool,
+    pub last_tool_use: Option<Instant>,
+    pub tool_effects: HashMap<Tool, Vec<egui::Vec2>>, // For tool-specific effects like shake, sparkle positions
 }
+
 
 impl Default for PixelArtEditor {
     fn default() -> Self {
@@ -199,6 +209,13 @@ impl Default for PixelArtEditor {
             frame_skip: 0,
             
             plugin_manager: PluginManager::new(),
+            
+            // Tool animations
+            tool_animations: HashMap::new(),
+            current_tool_animation: None,
+            animation_enabled: true,
+            last_tool_use: None,
+            tool_effects: HashMap::new(),
         }
     }
 }
@@ -207,6 +224,7 @@ impl PixelArtEditor {
     pub fn new() -> Self {
         let mut editor = Self::default();
         editor.plugin_manager.initialize();
+        editor.setup_tool_animations();
         editor
     }
 
@@ -346,5 +364,140 @@ impl PixelArtEditor {
                 }
             }
         }
+    }
+}
+
+impl PixelArtEditor {
+    pub fn setup_tool_animations(&mut self) {
+        // Set up animations for each tool
+        self.tool_animations.insert(Tool::Pencil, ToolAnimation::new(Tool::Pencil, AnimationType::Pulse, 0.5));
+        self.tool_animations.insert(Tool::Eraser, ToolAnimation::new(Tool::Eraser, AnimationType::Fade, 0.8));
+        self.tool_animations.insert(Tool::Bucket, ToolAnimation::new(Tool::Bucket, AnimationType::Bounce, 0.6));
+        self.tool_animations.insert(Tool::Eyedropper, ToolAnimation::new(Tool::Eyedropper, AnimationType::Scale, 0.4));
+        self.tool_animations.insert(Tool::Move, ToolAnimation::new(Tool::Move, AnimationType::Wobble, 0.7));
+        self.tool_animations.insert(Tool::Line, ToolAnimation::new(Tool::Line, AnimationType::Glow, 0.5));
+        self.tool_animations.insert(Tool::Rectangle, ToolAnimation::new(Tool::Rectangle, AnimationType::Rotate, 0.8));
+        self.tool_animations.insert(Tool::Circle, ToolAnimation::new(Tool::Circle, AnimationType::Sparkle, 1.0));
+        self.tool_animations.insert(Tool::Select, ToolAnimation::new(Tool::Select, AnimationType::Pulse, 0.4));
+        self.tool_animations.insert(Tool::Lasso, ToolAnimation::new(Tool::Lasso, AnimationType::Shake, 0.3));
+        self.tool_animations.insert(Tool::Spray, ToolAnimation::new(Tool::Spray, AnimationType::Sparkle, 0.6));
+        self.tool_animations.insert(Tool::Dither, ToolAnimation::new(Tool::Dither, AnimationType::Glow, 0.9));
+    }
+    
+    pub fn start_tool_animation(&mut self, tool: Tool) {
+        if !self.animation_enabled {
+            return;
+        }
+        
+        if let Some(animation) = self.tool_animations.get_mut(&tool) {
+            animation.color = self.selected_color;
+            animation.start();
+            self.current_tool_animation = Some(animation.clone());
+        }
+        
+        self.last_tool_use = Some(Instant::now());
+    }
+    
+    pub fn update_tool_animations(&mut self, dt: f32) {
+        if !self.animation_enabled {
+            return;
+        }
+        
+        // Update current tool animation
+        if let Some(ref mut animation) = self.current_tool_animation {
+            animation.update(dt);
+            if animation.is_finished() {
+                self.current_tool_animation = None;
+            }
+        }
+        
+        // Update all tool animations
+        for (_, animation) in self.tool_animations.iter_mut() {
+            animation.update(dt);
+        }
+    }
+    
+    pub fn get_tool_animation_transform(&self, tool: Tool) -> (f32, f32, f32) {
+        // Returns (scale, rotation, alpha)
+        if let Some(animation) = self.tool_animations.get(&tool) {
+            if animation.is_active {
+                let progress = animation.get_progress();
+                match animation.animation_type {
+                    AnimationType::Pulse => {
+                        let scale = 1.0 + (progress * std::f32::consts::PI * 2.0).sin() * 0.2;
+                        (scale, 0.0, 1.0)
+                    }
+                    AnimationType::Bounce => {
+                        let scale = 1.0 + (1.0 - progress).powi(2i32) * 0.3;
+                        (scale, 0.0, 1.0)
+                    }
+                    AnimationType::Rotate => {
+                        let rotation = progress * std::f32::consts::PI * 2.0;
+                        (1.0, rotation, 1.0)
+                    }
+                    AnimationType::Scale => {
+                        let scale = 1.0 + progress * 0.5;
+                        (scale, 0.0, 1.0)
+                    }
+                    AnimationType::Glow => {
+                        let alpha = 1.0 + (progress * std::f32::consts::PI * 2.0).sin() * 0.3;
+                        (1.0, 0.0, alpha)
+                    }
+                    AnimationType::Fade => {
+                        let alpha = 1.0 - progress * 0.5;
+                        (1.0, 0.0, alpha)
+                    }
+                    AnimationType::Shake => {
+                        let offset = ((progress * 20.0).sin() * (1.0 - progress)) * 2.0;
+                        (1.0, offset, 1.0)
+                    }
+                    AnimationType::Wobble => {
+                        let wobble = (progress * std::f32::consts::PI * 4.0).sin() * (1.0 - progress) * 0.1;
+                        (1.0 + wobble, 0.0, 1.0)
+                    }
+                    _ => (1.0, 0.0, 1.0),
+                }
+            } else {
+                (1.0, 0.0, 1.0)
+            }
+        } else {
+            (1.0, 0.0, 1.0)
+        }
+    }
+    
+    pub fn toggle_animations(&mut self) {
+        self.animation_enabled = !self.animation_enabled;
+        if !self.animation_enabled {
+            self.current_tool_animation = None;
+            for (_, animation) in self.tool_animations.iter_mut() {
+                animation.stop();
+            }
+        }
+    }
+    
+    pub fn create_tool_effect(&mut self, tool: Tool, position: egui::Vec2) {
+        if !self.animation_enabled {
+            return;
+        }
+        
+        // Create sparkle effect for certain tools
+        match tool {
+            Tool::Spray | Tool::Circle | Tool::Dither => {
+                let effects = self.tool_effects.entry(tool).or_insert_with(Vec::new);
+                effects.push(position);
+                if effects.len() > 10 {
+                    effects.remove(0);
+                }
+            }
+            _ => {}
+        }
+    }
+    
+    pub fn get_tool_effects(&self, tool: Tool) -> Vec<egui::Vec2> {
+        self.tool_effects.get(&tool).cloned().unwrap_or_default()
+    }
+    
+    pub fn clear_tool_effects(&mut self, tool: Tool) {
+        self.tool_effects.remove(&tool);
     }
 }

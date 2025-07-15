@@ -1,6 +1,6 @@
 use eframe::egui;
 use crate::editor::PixelArtEditor;
-use crate::types::{Layer, Frame};
+use crate::types::{Layer, Frame, Tool};
 
 impl PixelArtEditor {
     pub fn show_layers_panel(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
@@ -335,6 +335,150 @@ impl PixelArtEditor {
                 ui.separator();
                 self.show_animation_controls(ctx, ui);
             }
+        });
+    }
+
+    pub fn show_tools_panel(&mut self, ui: &mut egui::Ui) {
+        ui.set_min_width(200.0);
+        ui.heading("Tools");
+        ui.separator();
+
+        // Tool selection with animations
+        ui.group(|ui| {
+            ui.label("Drawing Tools:");
+            ui.horizontal_wrapped(|ui| {
+                for &tool in &[Tool::Pencil, Tool::Eraser, Tool::Bucket, Tool::Eyedropper] {
+                    let (icon, scale, _rotation, alpha) = self.tool_icon_animated(tool);
+                    let is_selected = self.tool == tool;
+                    
+                    let button_color = if is_selected {
+                        ui.visuals().selection.bg_fill
+                    } else {
+                        ui.visuals().widgets.inactive.bg_fill
+                    };
+                    
+                    let mut button_text = egui::RichText::new(icon)
+                        .size(20.0 * scale)
+                        .color(egui::Color32::from_rgba_unmultiplied(255, 255, 255, (alpha * 255.0) as u8));
+                    
+                    if ui.add(egui::Button::new(button_text)
+                        .fill(button_color)
+                        .min_size(egui::vec2(40.0 * scale, 40.0 * scale)))
+                        .on_hover_text(self.tool_name(tool))
+                        .clicked() {
+                        self.tool = tool;
+                        self.start_tool_animation(tool);
+                    }
+                }
+            });
+        });
+
+        ui.group(|ui| {
+            ui.label("Shape Tools:");
+            ui.horizontal_wrapped(|ui| {
+                for &tool in &[Tool::Line, Tool::Rectangle, Tool::Circle] {
+                    let (icon, scale, _rotation, alpha) = self.tool_icon_animated(tool);
+                    let is_selected = self.tool == tool;
+                    
+                    let button_color = if is_selected {
+                        ui.visuals().selection.bg_fill
+                    } else {
+                        ui.visuals().widgets.inactive.bg_fill
+                    };
+                    
+                    let mut button_text = egui::RichText::new(icon)
+                        .size(20.0 * scale)
+                        .color(egui::Color32::from_rgba_unmultiplied(255, 255, 255, (alpha * 255.0) as u8));
+                    
+                    if ui.add(egui::Button::new(button_text)
+                        .fill(button_color)
+                        .min_size(egui::vec2(40.0 * scale, 40.0 * scale)))
+                        .on_hover_text(self.tool_name(tool))
+                        .clicked() {
+                        self.tool = tool;
+                        self.start_tool_animation(tool);
+                    }
+                }
+            });
+        });
+
+        ui.group(|ui| {
+            ui.label("Selection Tools:");
+            ui.horizontal_wrapped(|ui| {
+                for &tool in &[Tool::Select, Tool::Lasso, Tool::Move] {
+                    let (icon, scale, _rotation, alpha) = self.tool_icon_animated(tool);
+                    let is_selected = self.tool == tool;
+                    
+                    let button_color = if is_selected {
+                        ui.visuals().selection.bg_fill
+                    } else {
+                        ui.visuals().widgets.inactive.bg_fill
+                    };
+                    
+                    let mut button_text = egui::RichText::new(icon)
+                        .size(20.0 * scale)
+                        .color(egui::Color32::from_rgba_unmultiplied(255, 255, 255, (alpha * 255.0) as u8));
+                    
+                    if ui.add(egui::Button::new(button_text)
+                        .fill(button_color)
+                        .min_size(egui::vec2(40.0 * scale, 40.0 * scale)))
+                        .on_hover_text(self.tool_name(tool))
+                        .clicked() {
+                        self.tool = tool;
+                        self.start_tool_animation(tool);
+                    }
+                }
+            });
+        });
+
+        ui.group(|ui| {
+            ui.label("Special Tools:");
+            ui.horizontal_wrapped(|ui| {
+                for &tool in &[Tool::Spray, Tool::Dither] {
+                    let (icon, scale, _rotation, alpha) = self.tool_icon_animated(tool);
+                    let is_selected = self.tool == tool;
+                    
+                    let button_color = if is_selected {
+                        ui.visuals().selection.bg_fill
+                    } else {
+                        ui.visuals().widgets.inactive.bg_fill
+                    };
+                    
+                    let mut button_text = egui::RichText::new(icon)
+                        .size(20.0 * scale)
+                        .color(egui::Color32::from_rgba_unmultiplied(255, 255, 255, (alpha * 255.0) as u8));
+                    
+                    if ui.add(egui::Button::new(button_text)
+                        .fill(button_color)
+                        .min_size(egui::vec2(40.0 * scale, 40.0 * scale)))
+                        .on_hover_text(self.tool_name(tool))
+                        .clicked() {
+                        self.tool = tool;
+                        self.start_tool_animation(tool);
+                    }
+                }
+            });
+        });
+
+        ui.separator();
+        
+        // Animation controls
+        ui.group(|ui| {
+            ui.label("Animation:");
+            ui.horizontal(|ui| {
+                if ui.checkbox(&mut self.animation_enabled, "Enable").changed() {
+                    if !self.animation_enabled {
+                        self.current_tool_animation = None;
+                        for (_, animation) in self.tool_animations.iter_mut() {
+                            animation.stop();
+                        }
+                    }
+                }
+                
+                if ui.button("Test").clicked() && self.animation_enabled {
+                    self.start_tool_animation(self.tool);
+                }
+            });
         });
     }
 }

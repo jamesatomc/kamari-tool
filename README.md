@@ -58,6 +58,13 @@ cargo run
 - 🪣 **Bucket**: Fill connected area with color
 - 👁 **Eyedropper**: Pick color from canvas
 - ↔ **Move**: Move layer content around
+- ╱ **Line**: Draw a straight line
+- ▭ **Rectangle**: Draw a rectangle shape
+- ◯ **Circle**: Draw a circle shape
+- ⬚ **Select**: Select a rectangular area
+- ➰ **Lasso**: Free-form selection tool
+- 💨 **Spray**: Spray paint effect
+- ▒ **Dither**: Apply a dither pattern
 
 ## Architecture
 

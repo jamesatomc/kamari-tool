@@ -3,6 +3,10 @@ use crate::editor::PixelArtEditor;
 
 impl eframe::App for PixelArtEditor {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Update tool animations
+        let dt = ctx.input(|i| i.unstable_dt);
+        self.update_tool_animations(dt);
+        
         // Handle animation
         if self.animation_playing && self.frames.len() > 1 {
             let current_time = ctx.input(|i| i.time);
@@ -11,6 +15,11 @@ impl eframe::App for PixelArtEditor {
                 self.last_animation_time = current_time;
                 ctx.request_repaint();
             }
+        }
+
+        // Request repaint for animations
+        if self.animation_enabled && self.current_tool_animation.is_some() {
+            ctx.request_repaint();
         }
 
         // Menu bar

@@ -90,6 +90,9 @@ impl PixelArtEditor {
                             ui.painter().rect_filled(pixel_rect, 0.0, pixel_color);
                         }
 
+                        // Draw animation effects
+                        self.draw_pixel_animation_effects(ui, pixel_rect, x, y, pixel_size);
+
                         // Draw grid lines if enabled (only at certain zoom levels)
                         if self.show_grid && pixel_size > 2.0 {
                             ui.painter().rect_filled(
@@ -118,6 +121,9 @@ impl PixelArtEditor {
                 // Draw tool overlays
                 self.draw_tool_overlays(ui, &canvas_rect, width, height, pixel_size);
                 
+                // Draw tool animations
+                self.draw_tool_animations(ui, &canvas_rect, width, height, pixel_size);
+                
                 ui.allocate_space(egui::vec2(padding_x, 0.0));
             });
             
@@ -126,6 +132,264 @@ impl PixelArtEditor {
 
         // Store scroll position for future reference
         self.canvas_scroll_offset = scroll_output.state.offset;
+    }
+
+    fn draw_pixel_animation_effects(&self, ui: &mut egui::Ui, pixel_rect: egui::Rect, x: usize, y: usize, pixel_size: f32) {
+        // Draw sparkle effects for specific tools
+        for tool in [Tool::Spray, Tool::Circle, Tool::Dither].iter() {
+            let effects = self.get_tool_effects(*tool);
+            for effect_pos in effects {
+                let effect_x = effect_pos.x as usize;
+                let effect_y = effect_pos.y as usize;
+                
+                if effect_x == x && effect_y == y {
+                    // Draw sparkle animation
+                    let time = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs_f32();
+                    
+                    let sparkle_alpha = (time * 5.0).sin().abs();
+                    let sparkle_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, (sparkle_alpha * 255.0) as u8);
+                    
+                    // Draw sparkle cross
+                    let center = pixel_rect.center();
+                    let size = pixel_size * 0.8;
+                    
+                    ui.painter().line_segment(
+                        [center - egui::vec2(size/2.0, 0.0), center + egui::vec2(size/2.0, 0.0)],
+                        egui::Stroke::new(2.0, sparkle_color)
+                    );
+                    ui.painter().line_segment(
+                        [center - egui::vec2(0.0, size/2.0), center + egui::vec2(0.0, size/2.0)],
+                        egui::Stroke::new(2.0, sparkle_color)
+                    );
+                }
+            }
+        }
+    }
+
+    fn draw_tool_animations(&self, ui: &mut egui::Ui, canvas_rect: &egui::Rect, width: usize, height: usize, pixel_size: f32) {
+        // Draw current tool animation
+        if let Some(ref animation) = self.current_tool_animation {
+            if animation.is_active {
+                let progress = animation.get_progress();
+                let (scale, rotation, alpha) = self.get_tool_animation_transform(animation.tool);
+                
+                // Draw animation based on tool type
+                match animation.tool {
+                    Tool::Pencil => {
+                        self.draw_pencil_animation(ui, canvas_rect, scale, alpha, progress);
+                    }
+                    Tool::Eraser => {
+                        self.draw_eraser_animation(ui, canvas_rect, scale, alpha, progress);
+                    }
+                    Tool::Bucket => {
+                        self.draw_bucket_animation(ui, canvas_rect, scale, alpha, progress);
+                    }
+                    Tool::Spray => {
+                        self.draw_spray_animation(ui, canvas_rect, scale, alpha, progress);
+                    }
+                    Tool::Line => {
+                        self.draw_line_animation(ui, canvas_rect, scale, alpha, progress);
+                    }
+                    Tool::Rectangle => {
+                        self.draw_rectangle_animation(ui, canvas_rect, scale, rotation, alpha, progress);
+                    }
+                    Tool::Circle => {
+                        self.draw_circle_animation(ui, canvas_rect, scale, alpha, progress);
+                    }
+                    Tool::Dither => {
+                        self.draw_dither_animation(ui, canvas_rect, scale, alpha, progress);
+                    }
+                    _ => {}
+                }
+                
+                // Draw particles
+                for particle in &animation.particles {
+                    let pos = canvas_rect.min + particle.position * pixel_size;
+                    let color = egui::Color32::from_rgba_unmultiplied(
+                        particle.color.r(),
+                        particle.color.g(),
+                        particle.color.b(),
+                        (particle.alpha * 255.0) as u8
+                    );
+                    
+                    ui.painter().circle_filled(pos, particle.size, color);
+                }
+            }
+        }
+    }
+
+    fn draw_pencil_animation(&self, ui: &mut egui::Ui, canvas_rect: &egui::Rect, scale: f32, alpha: f32, progress: f32) {
+        if let Some(hover_pos) = ui.input(|i| i.pointer.hover_pos()) {
+            if canvas_rect.contains(hover_pos) {
+                let pulse_radius = 10.0 * scale;
+                let color = egui::Color32::from_rgba_unmultiplied(
+                    self.selected_color.r(),
+                    self.selected_color.g(),
+                    self.selected_color.b(),
+                    (alpha * 128.0) as u8
+                );
+                
+                ui.painter().circle_stroke(hover_pos, pulse_radius, egui::Stroke::new(2.0, color));
+            }
+        }
+    }
+
+    fn draw_eraser_animation(&self, ui: &mut egui::Ui, canvas_rect: &egui::Rect, scale: f32, alpha: f32, progress: f32) {
+        if let Some(hover_pos) = ui.input(|i| i.pointer.hover_pos()) {
+            if canvas_rect.contains(hover_pos) {
+                let fade_radius = 15.0 * scale;
+                let color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, (alpha * 100.0) as u8);
+                
+                ui.painter().circle_filled(hover_pos, fade_radius, color);
+            }
+        }
+    }
+
+    fn draw_bucket_animation(&self, ui: &mut egui::Ui, canvas_rect: &egui::Rect, scale: f32, alpha: f32, progress: f32) {
+        if let Some(hover_pos) = ui.input(|i| i.pointer.hover_pos()) {
+            if canvas_rect.contains(hover_pos) {
+                let bounce_offset = (1.0 - progress).powi(2) * 10.0;
+                let pos = hover_pos - egui::vec2(0.0, bounce_offset);
+                let color = egui::Color32::from_rgba_unmultiplied(
+                    self.selected_color.r(),
+                    self.selected_color.g(),
+                    self.selected_color.b(),
+                    (alpha * 255.0) as u8
+                );
+                
+                ui.painter().rect_filled(
+                    egui::Rect::from_center_size(pos, egui::vec2(20.0 * scale, 20.0 * scale)),
+                    5.0,
+                    color
+                );
+            }
+        }
+    }
+
+    fn draw_spray_animation(&self, ui: &mut egui::Ui, canvas_rect: &egui::Rect, scale: f32, alpha: f32, progress: f32) {
+        if let Some(hover_pos) = ui.input(|i| i.pointer.hover_pos()) {
+            if canvas_rect.contains(hover_pos) {
+                let spray_radius = (self.spray_size as f32 * 20.0) * scale;
+                
+                // Draw spray particles
+                for i in 0..8 {
+                    let angle = (i as f32 / 8.0) * std::f32::consts::PI * 2.0 + progress * std::f32::consts::PI * 2.0;
+                    let distance = spray_radius * (0.5 + 0.5 * (progress * 10.0 + i as f32).sin());
+                    let particle_pos = hover_pos + egui::vec2(angle.cos(), angle.sin()) * distance;
+                    
+                    let color = egui::Color32::from_rgba_unmultiplied(
+                        self.selected_color.r(),
+                        self.selected_color.g(),
+                        self.selected_color.b(),
+                        (alpha * 128.0) as u8
+                    );
+                    
+                    ui.painter().circle_filled(particle_pos, 2.0, color);
+                }
+            }
+        }
+    }
+
+    fn draw_line_animation(&self, ui: &mut egui::Ui, canvas_rect: &egui::Rect, scale: f32, alpha: f32, progress: f32) {
+        if let Some((start_x, start_y)) = self.line_start {
+            if let Some(hover_pos) = ui.input(|i| i.pointer.hover_pos()) {
+                if canvas_rect.contains(hover_pos) {
+                    let start_pos = canvas_rect.min + egui::vec2(start_x as f32 * 20.0, start_y as f32 * 20.0);
+                    let glow_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, (alpha * 100.0) as u8);
+                    
+                    ui.painter().line_segment(
+                        [start_pos, hover_pos],
+                        egui::Stroke::new(4.0 * scale, glow_color)
+                    );
+                }
+            }
+        }
+    }
+
+    fn draw_rectangle_animation(&self, ui: &mut egui::Ui, canvas_rect: &egui::Rect, scale: f32, rotation: f32, alpha: f32, progress: f32) {
+        if let Some((start_x, start_y)) = self.rectangle_start {
+            if let Some(hover_pos) = ui.input(|i| i.pointer.hover_pos()) {
+                if canvas_rect.contains(hover_pos) {
+                    let start_pos = canvas_rect.min + egui::vec2(start_x as f32 * 20.0, start_y as f32 * 20.0);
+                    let center_vec = (start_pos.to_vec2() + hover_pos.to_vec2()) / 2.0;
+                    let center = egui::pos2(center_vec.x, center_vec.y);
+                    let size = (hover_pos - start_pos).abs() * scale;
+                    
+                    let color = egui::Color32::from_rgba_unmultiplied(
+                        self.selected_color.r(),
+                        self.selected_color.g(),
+                        self.selected_color.b(),
+                        (alpha * 128.0) as u8
+                    );
+                    
+                    // Draw rotating rectangle outline
+                    let rect = egui::Rect::from_center_size(center, size);
+                    ui.painter().rect_stroke(rect, 0.0, egui::Stroke::new(3.0, color), egui::epaint::StrokeKind::Middle);
+                }
+            }
+        }
+    }
+
+    fn draw_circle_animation(&self, ui: &mut egui::Ui, canvas_rect: &egui::Rect, scale: f32, alpha: f32, progress: f32) {
+        if let Some((start_x, start_y)) = self.circle_start {
+            if let Some(hover_pos) = ui.input(|i| i.pointer.hover_pos()) {
+                if canvas_rect.contains(hover_pos) {
+                    let start_pos = canvas_rect.min + egui::vec2(start_x as f32 * 20.0, start_y as f32 * 20.0);
+                    let radius = (hover_pos - start_pos).length() * scale;
+                    
+                    let color = egui::Color32::from_rgba_unmultiplied(
+                        self.selected_color.r(),
+                        self.selected_color.g(),
+                        self.selected_color.b(),
+                        (alpha * 128.0) as u8
+                    );
+                    
+                    ui.painter().circle_stroke(start_pos, radius, egui::Stroke::new(3.0, color));
+                    
+                    // Draw sparkle effects around the circle
+                    for i in 0..6 {
+                        let angle = (i as f32 / 6.0) * std::f32::consts::PI * 2.0 + progress * std::f32::consts::PI * 2.0;
+                        let sparkle_pos = start_pos + egui::vec2(angle.cos(), angle.sin()) * radius;
+                        ui.painter().circle_filled(sparkle_pos, 2.0, egui::Color32::WHITE);
+                    }
+                }
+            }
+        }
+    }
+
+    fn draw_dither_animation(&self, ui: &mut egui::Ui, canvas_rect: &egui::Rect, scale: f32, alpha: f32, progress: f32) {
+        if let Some(hover_pos) = ui.input(|i| i.pointer.hover_pos()) {
+            if canvas_rect.contains(hover_pos) {
+                let glow_size = 30.0 * scale;
+                let color = egui::Color32::from_rgba_unmultiplied(
+                    self.selected_color.r(),
+                    self.selected_color.g(),
+                    self.selected_color.b(),
+                    (alpha * 80.0) as u8
+                );
+                
+                // Draw dither pattern preview
+                for i in 0..4 {
+                    for j in 0..4 {
+                        let pattern_pos = hover_pos + egui::vec2(
+                            (i as f32 - 1.5) * 8.0,
+                            (j as f32 - 1.5) * 8.0
+                        );
+                        
+                        if (i + j) % 2 == 0 {
+                            ui.painter().rect_filled(
+                                egui::Rect::from_center_size(pattern_pos, egui::vec2(6.0, 6.0)),
+                                0.0,
+                                color
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fn draw_tool_overlays(&self, ui: &mut egui::Ui, canvas_rect: &egui::Rect, width: usize, height: usize, pixel_size: f32) {
@@ -303,51 +567,26 @@ impl PixelArtEditor {
                 Tool::Pencil => {
                     self.push_undo();
                     let selected_color = self.selected_color;
-                    self.paint_brush(x, y, selected_color);
+                    self.use_tool_with_animation(Tool::Pencil, x, y, selected_color);
                 }
                 Tool::Eraser => {
                     self.push_undo();
-                    self.erase_brush(x, y);
+                    self.use_tool_with_animation(Tool::Eraser, x, y, eframe::egui::Color32::TRANSPARENT);
                 }
                 Tool::Bucket => {
                     self.push_undo();
-                    // Simple flood fill implementation - fix to prevent infinite loops
-                    let new_color = self.selected_color;
-                    let layer = self.get_active_layer_mut();
-                    let width = layer.width();
-                    let height = layer.height();
-                    
-                    if x < width && y < height {
-                        let original_color = layer.grid[y][x]; // Use actual layer color, not composed
-                        
-                        if original_color != new_color {
-                            let mut stack = vec![(x, y)];
-                            let mut visited = vec![vec![false; width]; height];
-                            
-                            while let Some((cx, cy)) = stack.pop() {
-                                if cx >= width || cy >= height || visited[cy][cx] || layer.grid[cy][cx] != original_color {
-                                    continue;
-                                }
-                                
-                                visited[cy][cx] = true;
-                                layer.grid[cy][cx] = new_color;
-                                
-                                // Add neighbors to stack
-                                if cx > 0 {
-                                    stack.push((cx - 1, cy));
-                                }
-                                if cx < width - 1 {
-                                    stack.push((cx + 1, cy));
-                                }
-                                if cy > 0 {
-                                    stack.push((cx, cy - 1));
-                                }
-                                if cy < height - 1 {
-                                    stack.push((cx, cy + 1));
-                                }
-                            }
-                        }
-                    }
+                    let selected_color = self.selected_color;
+                    self.use_tool_with_animation(Tool::Bucket, x, y, selected_color);
+                }
+                Tool::Spray => {
+                    self.push_undo();
+                    let selected_color = self.selected_color;
+                    self.use_tool_with_animation(Tool::Spray, x, y, selected_color);
+                }
+                Tool::Dither => {
+                    self.push_undo();
+                    let selected_color = self.selected_color;
+                    self.use_tool_with_animation(Tool::Dither, x, y, selected_color);
                 }
                 Tool::Eyedropper => {
                     self.selected_color = composed[y][x];
