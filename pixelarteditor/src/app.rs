@@ -90,6 +90,17 @@ impl eframe::App for PixelArtEditor {
             self.undo();
         }
         
+        // Save shortcuts
+        if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::S)) {
+            if let Err(e) = self.quick_save() {
+                eprintln!("Quick save failed: {}", e);
+            }
+        } else if ctx.input(|i| i.modifiers.ctrl && i.modifiers.shift && i.key_pressed(egui::Key::S)) {
+            self.save_all_dialog();
+        } else if ctx.input(|i| i.modifiers.ctrl && i.modifiers.alt && i.key_pressed(egui::Key::S)) {
+            self.show_export_dialog = true;
+        }
+        
         // Zoom shortcuts
         if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Plus)) {
             self.zoom_in();

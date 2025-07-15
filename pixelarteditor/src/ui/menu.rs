@@ -14,12 +14,70 @@ impl PixelArtEditor {
                     self.show_new_sprite_dialog = true;
                     ui.close_menu();
                 }
+                ui.separator();
                 if ui
                     .button("Save As...")
-                    .on_hover_text("Save as... (choose file)")
+                    .on_hover_text("Save current frame as single file")
                     .clicked()
                 {
                     self.save_as_png_dialog();
+                    ui.close_menu();
+                }
+                if ui
+                    .button("Quick Save")
+                    .on_hover_text("Quick save current frame as PNG")
+                    .clicked()
+                {
+                    if let Err(e) = self.quick_save() {
+                        eprintln!("Quick save failed: {}", e);
+                    }
+                    ui.close_menu();
+                }
+                if ui
+                    .button("Save All...")
+                    .on_hover_text("Save all frames and layers")
+                    .clicked()
+                {
+                    self.save_all_dialog();
+                    ui.close_menu();
+                }
+                if ui
+                    .button("Export...")
+                    .on_hover_text("Export with options")
+                    .clicked()
+                {
+                    self.show_export_dialog = true;
+                    ui.close_menu();
+                }
+                ui.separator();
+                if ui
+                    .button("Save Project...")
+                    .on_hover_text("Save project file (.json)")
+                    .clicked()
+                {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .set_title("Save Project")
+                        .add_filter("JSON", &["json"])
+                        .save_file() {
+                        if let Err(e) = self.save_project_file(&path.to_string_lossy()) {
+                            eprintln!("Failed to save project: {}", e);
+                        }
+                    }
+                    ui.close_menu();
+                }
+                if ui
+                    .button("Load Project...")
+                    .on_hover_text("Load project file (.json)")
+                    .clicked()
+                {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .set_title("Load Project")
+                        .add_filter("JSON", &["json"])
+                        .pick_file() {
+                        if let Err(e) = self.load_project_file(&path.to_string_lossy()) {
+                            eprintln!("Failed to load project: {}", e);
+                        }
+                    }
                     ui.close_menu();
                 }
                 ui.separator();
@@ -215,6 +273,10 @@ impl PixelArtEditor {
                 ui.label("Ctrl+Z: Undo");
                 ui.label("Ctrl+Shift+Z: Redo");
                 ui.separator();
+                ui.label("Ctrl+S: Quick Save");
+                ui.label("Ctrl+Shift+S: Save All");
+                ui.label("Ctrl+Alt+S: Export Options");
+                ui.separator();
                 ui.label("Ctrl+ +: Zoom In");
                 ui.label("Ctrl+ -: Zoom Out");
                 ui.label("Ctrl+0: Reset Zoom");
@@ -245,97 +307,97 @@ impl PixelArtEditor {
     }
 
     pub fn show_toolbar(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        ui.add_space(5.0);
         ui.horizontal(|ui| {
-            // Tools panel
-            egui::Frame::group(ui.style())
-                .stroke(egui::Stroke::new(1.0, ui.visuals().widgets.active.bg_fill))
-                .corner_radius(5.0)
-                .inner_margin(8.0)
-                .outer_margin(5.0)
-                .show(ui, |ui| {
-                    ui.vertical(|ui| {
-                        ui.label("Tools");
-                        ui.horizontal_wrapped(|ui| {
-                            for tool in [
-                                Tool::Pencil, Tool::Eraser, Tool::Bucket, Tool::Eyedropper, Tool::Move,
-                                Tool::Line, Tool::Rectangle, Tool::Circle, Tool::Select, Tool::Lasso,
-                                Tool::Spray, Tool::Dither
-                            ] {
-                                let selected = self.tool == tool;
-                                let response = ui
-                                    .selectable_label(selected, self.tool_icon_safe(tool))
-                                    .on_hover_text(self.tool_name(tool));
-
-                                if response.clicked() {
-                                    self.tool = tool;
-                                }
-                            }
-                        });
-                    });
-                });
-
-            ui.separator();
-
-            // Brush settings
-            egui::Frame::group(ui.style())
-                .stroke(egui::Stroke::new(1.0, ui.visuals().widgets.active.bg_fill))
-                .corner_radius(5.0)
-                .inner_margin(8.0)
-                .outer_margin(5.0)
-                .show(ui, |ui| {
-                    ui.vertical(|ui| {
-                        ui.label("Brush Size");
-                        ui.add(egui::Slider::new(&mut self.brush_size, 1..=100).text(""));
-                    });
-                });
-
-            ui.separator();
-
-            // Zoom controls
-            egui::Frame::group(ui.style())
-                .stroke(egui::Stroke::new(1.0, ui.visuals().widgets.active.bg_fill))
-                .corner_radius(5.0)
-                .inner_margin(8.0)
-                .outer_margin(5.0)
-                .show(ui, |ui| {
-                    ui.vertical(|ui| {
-                        ui.label("Zoom");
-                        ui.horizontal(|ui| {
-                            if ui.button("-").on_hover_text("Zoom Out").clicked() {
-                                self.zoom_out();
-                            }
-                            ui.label(format!("{:.1}%", self.zoom * 100.0));
-                            if ui.button("+").on_hover_text("Zoom In").clicked() {
-                                self.zoom_in();
-                            }
-                            if ui.button("Reset").on_hover_text("Reset Zoom").clicked() {
-                                self.reset_zoom();
-                            }
-                        });
-                    });
-                });
-
-            // Animation controls
-            if self.frames.len() > 1 {
-                ui.separator();
-                self.show_animation_controls(ctx, ui);
-            }
-
-            // Center canvas button
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .button("Center")
-                    .on_hover_text("Center the canvas view")
-                    .clicked()
-                {
-                    ctx.memory_mut(|mem| mem.reset_areas());
+            // Save buttons
+            ui.group(|ui| {
+                if ui.button("💾 Save").on_hover_text("Quick save (Ctrl+S)").clicked() {
+                    if let Err(e) = self.quick_save() {
+                        eprintln!("Quick save failed: {}", e);
+                    }
+                }
+                
+                if ui.button("📁 Save All").on_hover_text("Save all frames and layers (Ctrl+Shift+S)").clicked() {
+                    self.save_all_dialog();
+                }
+                
+                if ui.button("📤 Export").on_hover_text("Export with options (Ctrl+Alt+S)").clicked() {
+                    self.show_export_dialog = true;
                 }
             });
+            
+            ui.separator();
+            
+            // Undo/Redo buttons
+            ui.group(|ui| {
+                if ui.button("↶").on_hover_text("Undo (Ctrl+Z)").clicked() {
+                    self.undo();
+                }
+                
+                if ui.add_enabled(self.can_redo(), egui::Button::new("↷"))
+                    .on_hover_text("Redo (Ctrl+Shift+Z)").clicked() {
+                    self.redo();
+                }
+            });
+            
+            ui.separator();
+            
+            // Zoom controls
+            ui.group(|ui| {
+                if ui.button("-").on_hover_text("Zoom out (Ctrl+-)").clicked() {
+                    self.zoom_out();
+                }
+                
+                ui.label(format!("{:.0}%", self.zoom * 100.0));
+                
+                if ui.button("+").on_hover_text("Zoom in (Ctrl++)").clicked() {
+                    self.zoom_in();
+                }
+                
+                if ui.button("🎯").on_hover_text("Reset zoom (Ctrl+0)").clicked() {
+                    self.reset_zoom();
+                }
+                
+                if ui.button("⌂").on_hover_text("Center canvas (Ctrl+Home)").clicked() {
+                    self.center_canvas();
+                }
+            });
+            
+            ui.separator();
+            
+            // Animation controls
+            ui.group(|ui| {
+                if self.frames.len() > 1 {
+                    let icon = if self.animation_playing { "⏸" } else { "▶" };
+                    let text = if self.animation_playing { "Pause" } else { "Play" };
+                    
+                    if ui.button(icon).on_hover_text(text).clicked() {
+                        self.animation_playing = !self.animation_playing;
+                    }
+                    
+                    ui.label(format!("Frame {}/{}", self.current_frame + 1, self.frames.len()));
+                }
+            });
+            
+            ui.separator();
+            
+            // Current tool and color
+            ui.group(|ui| {
+                let (tool_icon, scale, _rotation, alpha) = self.tool_icon_animated(self.tool);
+                let tool_text = egui::RichText::new(tool_icon)
+                    .size(16.0 * scale)
+                    .color(egui::Color32::from_rgba_unmultiplied(255, 255, 255, (alpha * 255.0) as u8));
+                
+                ui.label(tool_text);
+                ui.label(self.tool_name(self.tool));
+                
+                // Color preview
+                let color_rect = ui.allocate_response(egui::vec2(20.0, 20.0), egui::Sense::hover());
+                ui.painter().rect_filled(color_rect.rect, 2.0, self.selected_color);
+                ui.painter().rect_stroke(color_rect.rect, 2.0, egui::Stroke::new(1.0, egui::Color32::WHITE), egui::epaint::StrokeKind::Middle);
+            });
         });
-        ui.add_space(5.0);
     }
-
+    
     pub fn show_animation_controls(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         egui::Frame::group(ui.style())
             .stroke(egui::Stroke::new(1.0, ui.visuals().widgets.active.bg_fill))

@@ -77,12 +77,14 @@ impl PixelArtEditor {
             return;
         }
 
-        eframe::egui::Window::new("Export")
+        eframe::egui::Window::new("Export Options")
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
                 ui.label("Export Settings:");
+                ui.separator();
                 
+                // Format selection
                 ui.horizontal(|ui| {
                     ui.label("Format:");
                     eframe::egui::ComboBox::from_id_salt("export_format")
@@ -94,53 +96,102 @@ impl PixelArtEditor {
                             ui.selectable_value(&mut self.export_format, crate::types::ExportFormat::BMP, "BMP");
                             ui.selectable_value(&mut self.export_format, crate::types::ExportFormat::GIF, "GIF");
                             ui.selectable_value(&mut self.export_format, crate::types::ExportFormat::ICO, "ICO");
-                            ui.selectable_value(&mut self.export_format, crate::types::ExportFormat::PCX, "PCX");
-                            ui.selectable_value(&mut self.export_format, crate::types::ExportFormat::POC, "POC");
-                            ui.selectable_value(&mut self.export_format, crate::types::ExportFormat::QOI, "QOI");
-                            ui.selectable_value(&mut self.export_format, crate::types::ExportFormat::SVG, "SVG");
                             ui.selectable_value(&mut self.export_format, crate::types::ExportFormat::TGA, "TGA");
                             ui.selectable_value(&mut self.export_format, crate::types::ExportFormat::WEBP, "WEBP");
-                            ui.selectable_value(&mut self.export_format, crate::types::ExportFormat::ASE, "ASE");
-                            ui.selectable_value(&mut self.export_format, crate::types::ExportFormat::ASEPRITE, "ASEPRITE");
-                            ui.selectable_value(&mut self.export_format, crate::types::ExportFormat::CSS, "CSS");
-                            ui.selectable_value(&mut self.export_format, crate::types::ExportFormat::FLC, "FLC");
-                            ui.selectable_value(&mut self.export_format, crate::types::ExportFormat::FLI, "FLI");
                         });
                 });
                 
+                ui.separator();
+                
+                // Export options
+                ui.label("Export Options:");
                 ui.checkbox(&mut self.export_individual_layers, "Export individual layers");
                 ui.checkbox(&mut self.export_all_frames, "Export all frames");
                 
+                if self.export_individual_layers {
+                    ui.label("  └ Creates separate files for each layer");
+                }
+                if self.export_all_frames {
+                    ui.label("  └ Creates separate files for each frame");
+                }
+                
+                ui.separator();
+                
+                // File naming preview
+                ui.label("File naming preview:");
+                ui.group(|ui| {
+                    ui.label(format!("Current frame: composed_001.{}", self.get_file_extension()));
+                    if self.export_all_frames {
+                        ui.label(format!("All frames: composed_001.{}, composed_002.{}, ...", 
+                                        self.get_file_extension(), self.get_file_extension()));
+                    }
+                    if self.export_individual_layers {
+                        ui.label(format!("Layers: layer_01_Layer_1.{}, layer_02_Layer_2.{}, ...", 
+                                        self.get_file_extension(), self.get_file_extension()));
+                    }
+                });
+                
+                ui.separator();
+                
+                // Export buttons
                 ui.horizontal(|ui| {
-                    if ui.button("Export").clicked() {
-                        let filename = match self.export_format {
-                            crate::types::ExportFormat::PNG => "exported_pixel_art.png",
-                            crate::types::ExportFormat::JPG => "exported_pixel_art.jpg",
-                            crate::types::ExportFormat::JPEG => "exported_pixel_art.jpeg",
-                            crate::types::ExportFormat::BMP => "exported_pixel_art.bmp",
-                            crate::types::ExportFormat::GIF => "exported_pixel_art.gif",
-                            crate::types::ExportFormat::ICO => "exported_pixel_art.ico",
-                            crate::types::ExportFormat::PCX => "exported_pixel_art.pcx",
-                            crate::types::ExportFormat::POC => "exported_pixel_art.poc",
-                            crate::types::ExportFormat::QOI => "exported_pixel_art.qoi",
-                            crate::types::ExportFormat::SVG => "exported_pixel_art.svg",
-                            crate::types::ExportFormat::TGA => "exported_pixel_art.tga",
-                            crate::types::ExportFormat::WEBP => "exported_pixel_art.webp",
-                            crate::types::ExportFormat::ASE => "exported_pixel_art.ase",
-                            crate::types::ExportFormat::ASEPRITE => "exported_pixel_art.aseprite",
-                            crate::types::ExportFormat::CSS => "exported_pixel_art.css",
-                            crate::types::ExportFormat::FLC => "exported_pixel_art.flc",
-                            crate::types::ExportFormat::FLI => "exported_pixel_art.fli",
-                        };
+                    if ui.button("Export Single").on_hover_text("Export current frame only").clicked() {
+                        let filename = format!("pixel_art.{}", self.get_file_extension());
                         
-                        if let Err(e) = self.save_image(filename) {
+                        if let Err(e) = self.save_image(&filename) {
                             eprintln!("Failed to export: {}", e);
+                        } else {
+                            println!("Exported: {}", filename);
                         }
                         
                         self.show_export_dialog = false;
                     }
                     
+                    if ui.button("Export All").on_hover_text("Export all frames and layers to folder").clicked() {
+                        self.save_all_dialog();
+                        self.show_export_dialog = false;
+                    }
+                    
                     if ui.button("Cancel").clicked() {
+                        self.show_export_dialog = false;
+                    }
+                });
+                
+                ui.separator();
+                
+                // Quick export buttons
+                ui.label("Quick Export:");
+                ui.horizontal(|ui| {
+                    if ui.button("PNG").clicked() {
+                        self.export_format = crate::types::ExportFormat::PNG;
+                        let filename = format!("pixel_art.png");
+                        if let Err(e) = self.save_image(&filename) {
+                            eprintln!("Failed to export PNG: {}", e);
+                        } else {
+                            println!("Exported: {}", filename);
+                        }
+                        self.show_export_dialog = false;
+                    }
+                    
+                    if ui.button("JPG").clicked() {
+                        self.export_format = crate::types::ExportFormat::JPG;
+                        let filename = format!("pixel_art.jpg");
+                        if let Err(e) = self.save_image(&filename) {
+                            eprintln!("Failed to export JPG: {}", e);
+                        } else {
+                            println!("Exported: {}", filename);
+                        }
+                        self.show_export_dialog = false;
+                    }
+                    
+                    if ui.button("BMP").clicked() {
+                        self.export_format = crate::types::ExportFormat::BMP;
+                        let filename = format!("pixel_art.bmp");
+                        if let Err(e) = self.save_image(&filename) {
+                            eprintln!("Failed to export BMP: {}", e);
+                        } else {
+                            println!("Exported: {}", filename);
+                        }
                         self.show_export_dialog = false;
                     }
                 });
@@ -435,5 +486,340 @@ impl PixelArtEditor {
         Ok(())
     }
 
+    /// Save all frames and layers in selected format
+    pub fn save_all_dialog(&mut self) {
+        if let Some(folder) = rfd::FileDialog::new()
+            .set_title("Select folder to save all files")
+            .pick_folder() {
+            
+            if let Err(e) = self.save_all_to_folder(&folder) {
+                eprintln!("Failed to save all: {}", e);
+            }
+        }
+    }
+    
+    /// Save all frames and layers to a specific folder
+    pub fn save_all_to_folder(&self, folder: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+        // Create subfolders if needed
+        let frames_folder = folder.join("frames");
+        let layers_folder = folder.join("layers");
+        let composed_folder = folder.join("composed");
+        
+        std::fs::create_dir_all(&frames_folder)?;
+        std::fs::create_dir_all(&layers_folder)?;
+        std::fs::create_dir_all(&composed_folder)?;
+        
+        // Save composed frames
+        if self.export_all_frames {
+            self.save_all_frames(&frames_folder)?;
+        }
+        
+        // Save individual layers
+        if self.export_individual_layers {
+            self.save_all_layers(&layers_folder)?;
+        }
+        
+        // Save composed images (all layers combined)
+        self.save_all_composed(&composed_folder)?;
+        
+        println!("All files saved to: {:?}", folder);
+        Ok(())
+    }
+    
+    /// Save all frames as separate files
+    fn save_all_frames(&self, folder: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+        for (frame_idx, frame) in self.frames.iter().enumerate() {
+            let filename = format!("frame_{:03}.{}", frame_idx + 1, self.get_file_extension());
+            let filepath = folder.join(filename);
+            
+            // Compose this frame
+            let composed = self.compose_frame(frame);
+            self.save_composed_image(&filepath, &composed)?;
+        }
+        Ok(())
+    }
+    
+    /// Save all layers as separate files
+    fn save_all_layers(&self, folder: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+        for (frame_idx, frame) in self.frames.iter().enumerate() {
+            let frame_folder = folder.join(format!("frame_{:03}", frame_idx + 1));
+            std::fs::create_dir_all(&frame_folder)?;
+            
+            for (layer_idx, layer) in frame.layers.iter().enumerate() {
+                if !layer.visible {
+                    continue;
+                }
+                
+                let layer_name = layer.name.replace(" ", "_").replace("/", "_").replace("\\", "_");
+                let filename = format!("layer_{:02}_{}.{}", layer_idx + 1, layer_name, self.get_file_extension());
+                let filepath = frame_folder.join(filename);
+                
+                self.save_layer_image(&filepath, layer)?;
+            }
+        }
+        Ok(())
+    }
+    
+    /// Save all composed images (all layers combined)
+    fn save_all_composed(&self, folder: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+        for (frame_idx, frame) in self.frames.iter().enumerate() {
+            let filename = format!("composed_{:03}.{}", frame_idx + 1, self.get_file_extension());
+            let filepath = folder.join(filename);
+            
+            let composed = self.compose_frame(frame);
+            self.save_composed_image(&filepath, &composed)?;
+        }
+        Ok(())
+    }
+    
+    /// Compose a single frame (combine all visible layers)
+    fn compose_frame(&self, frame: &crate::types::Frame) -> Vec<Vec<eframe::egui::Color32>> {
+        if frame.layers.is_empty() {
+            return vec![];
+        }
+        
+        let width = frame.layers[0].width();
+        let height = frame.layers[0].height();
+        let mut composed = vec![vec![eframe::egui::Color32::TRANSPARENT; width]; height];
+        
+        for layer in &frame.layers {
+            if !layer.visible {
+                continue;
+            }
+            
+            for y in 0..height {
+                for x in 0..width {
+                    let pixel = layer.grid[y][x];
+                    if pixel.a() > 0 {
+                        // Simple alpha blending
+                        if composed[y][x].a() == 0 {
+                            composed[y][x] = pixel;
+                        } else {
+                            // Blend with existing pixel
+                            let alpha = pixel.a() as f32 / 255.0;
+                            let inv_alpha = 1.0 - alpha;
+                            let existing = composed[y][x];
+                            
+                            let r = (pixel.r() as f32 * alpha + existing.r() as f32 * inv_alpha) as u8;
+                            let g = (pixel.g() as f32 * alpha + existing.g() as f32 * inv_alpha) as u8;
+                            let b = (pixel.b() as f32 * alpha + existing.b() as f32 * inv_alpha) as u8;
+                            let a = (pixel.a() as f32 + existing.a() as f32 * inv_alpha).min(255.0) as u8;
+                            
+                            composed[y][x] = eframe::egui::Color32::from_rgba_unmultiplied(r, g, b, a);
+                        }
+                    }
+                }
+            }
+        }
+        
+        composed
+    }
+    
+    /// Save composed image data to file
+    fn save_composed_image(&self, filepath: &std::path::Path, composed: &Vec<Vec<eframe::egui::Color32>>) -> Result<(), Box<dyn std::error::Error>> {
+        if composed.is_empty() {
+            return Err("No image data to save".into());
+        }
+        
+        let width = composed[0].len() as u32;
+        let height = composed.len() as u32;
+        let mut image_data = vec![0u8; (width * height * 4) as usize];
+        
+        for y in 0..height {
+            for x in 0..width {
+                let pixel = composed[y as usize][x as usize];
+                let idx = ((y * width + x) * 4) as usize;
+                image_data[idx] = pixel.r();
+                image_data[idx + 1] = pixel.g();
+                image_data[idx + 2] = pixel.b();
+                image_data[idx + 3] = pixel.a();
+            }
+        }
+        
+        let filepath_str = filepath.to_string_lossy().to_string();
+        self.save_image_data(&filepath_str, &image_data, width, height)
+    }
+    
+    /// Save single layer to file
+    fn save_layer_image(&self, filepath: &std::path::Path, layer: &crate::types::Layer) -> Result<(), Box<dyn std::error::Error>> {
+        let width = layer.width() as u32;
+        let height = layer.height() as u32;
+        let mut image_data = vec![0u8; (width * height * 4) as usize];
+        
+        for y in 0..height {
+            for x in 0..width {
+                let pixel = layer.grid[y as usize][x as usize];
+                let idx = ((y * width + x) * 4) as usize;
+                image_data[idx] = pixel.r();
+                image_data[idx + 1] = pixel.g();
+                image_data[idx + 2] = pixel.b();
+                image_data[idx + 3] = pixel.a();
+            }
+        }
+        
+        let filepath_str = filepath.to_string_lossy().to_string();
+        self.save_image_data(&filepath_str, &image_data, width, height)
+    }
+    
+    /// Save image data with current format
+    fn save_image_data(&self, filepath: &str, image_data: &[u8], width: u32, height: u32) -> Result<(), Box<dyn std::error::Error>> {
+        match self.export_format {
+            crate::types::ExportFormat::PNG => {
+                self.save_as_png_data(filepath, image_data, width, height)?;
+            }
+            crate::types::ExportFormat::JPG | crate::types::ExportFormat::JPEG => {
+                self.save_as_jpg_data(filepath, image_data, width, height)?;
+            }
+            crate::types::ExportFormat::BMP => {
+                self.save_as_bmp_data(filepath, image_data, width, height)?;
+            }
+            crate::types::ExportFormat::GIF => {
+                self.save_as_gif_data(filepath, image_data, width, height)?;
+            }
+            _ => {
+                // Default to PNG for unsupported formats
+                self.save_as_png_data(filepath, image_data, width, height)?;
+            }
+        }
+        Ok(())
+    }
+    
+    /// Get file extension based on current export format
+    fn get_file_extension(&self) -> &str {
+        match self.export_format {
+            crate::types::ExportFormat::PNG => "png",
+            crate::types::ExportFormat::JPG => "jpg",
+            crate::types::ExportFormat::JPEG => "jpeg",
+            crate::types::ExportFormat::BMP => "bmp",
+            crate::types::ExportFormat::GIF => "gif",
+            crate::types::ExportFormat::ICO => "ico",
+            crate::types::ExportFormat::PCX => "pcx",
+            crate::types::ExportFormat::POC => "poc",
+            crate::types::ExportFormat::QOI => "qoi",
+            crate::types::ExportFormat::SVG => "svg",
+            crate::types::ExportFormat::TGA => "tga",
+            crate::types::ExportFormat::WEBP => "webp",
+            crate::types::ExportFormat::ASE => "ase",
+            crate::types::ExportFormat::ASEPRITE => "aseprite",
+            crate::types::ExportFormat::CSS => "css",
+            crate::types::ExportFormat::FLC => "flc",
+            crate::types::ExportFormat::FLI => "fli",
+        }
+    }
+    
+    /// Save PNG with image data
+    fn save_as_png_data(&self, filepath: &str, image_data: &[u8], width: u32, height: u32) -> Result<(), Box<dyn std::error::Error>> {
+        let mut img = image::RgbaImage::new(width, height);
+        
+        for y in 0..height {
+            for x in 0..width {
+                let idx = ((y * width + x) * 4) as usize;
+                let r = image_data[idx];
+                let g = image_data[idx + 1];
+                let b = image_data[idx + 2];
+                let a = image_data[idx + 3];
+                img.put_pixel(x, y, image::Rgba([r, g, b, a]));
+            }
+        }
+        
+        img.save(filepath)?;
+        Ok(())
+    }
+    
+    /// Save JPG with image data
+    fn save_as_jpg_data(&self, filepath: &str, image_data: &[u8], width: u32, height: u32) -> Result<(), Box<dyn std::error::Error>> {
+        let mut img = image::RgbImage::new(width, height);
+        
+        for y in 0..height {
+            for x in 0..width {
+                let idx = ((y * width + x) * 4) as usize;
+                let r = image_data[idx];
+                let g = image_data[idx + 1];
+                let b = image_data[idx + 2];
+                // JPG doesn't support alpha, so we ignore it
+                img.put_pixel(x, y, image::Rgb([r, g, b]));
+            }
+        }
+        
+        img.save(filepath)?;
+        Ok(())
+    }
+    
+    /// Save BMP with image data
+    fn save_as_bmp_data(&self, filepath: &str, image_data: &[u8], width: u32, height: u32) -> Result<(), Box<dyn std::error::Error>> {
+        let mut img = image::RgbImage::new(width, height);
+        
+        for y in 0..height {
+            for x in 0..width {
+                let idx = ((y * width + x) * 4) as usize;
+                let r = image_data[idx];
+                let g = image_data[idx + 1];
+                let b = image_data[idx + 2];
+                img.put_pixel(x, y, image::Rgb([r, g, b]));
+            }
+        }
+        
+        img.save(filepath)?;
+        Ok(())
+    }
+    
+    /// Save GIF with image data
+    fn save_as_gif_data(&self, filepath: &str, image_data: &[u8], width: u32, height: u32) -> Result<(), Box<dyn std::error::Error>> {
+        // For GIF, we'll use PNG as fallback since GIF requires palette conversion
+        self.save_as_png_data(filepath, image_data, width, height)
+    }
+    
+    /// Quick save current frame as PNG
+    pub fn quick_save(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        
+        let filename = format!("pixel_art_{}.png", timestamp);
+        let composed = self.get_composed_grid();
+        
+        if composed.is_empty() {
+            return Err("No canvas data to save".into());
+        }
+        
+        let width = composed[0].len() as u32;
+        let height = composed.len() as u32;
+        let mut image_data = vec![0u8; (width * height * 4) as usize];
+        
+        for y in 0..height {
+            for x in 0..width {
+                let pixel = composed[y as usize][x as usize];
+                let idx = ((y * width + x) * 4) as usize;
+                image_data[idx] = pixel.r();
+                image_data[idx + 1] = pixel.g();
+                image_data[idx + 2] = pixel.b();
+                image_data[idx + 3] = pixel.a();
+            }
+        }
+        
+        self.save_as_png_data(&filename, &image_data, width, height)?;
+        println!("Quick saved as: {}", filename);
+        Ok(())
+    }
+    
+    /// Save project file (all frames and layers)
+    pub fn save_project_file(&self, filepath: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let project_data = serde_json::to_string_pretty(&self.frames)?;
+        std::fs::write(filepath, project_data)?;
+        println!("Project saved as: {}", filepath);
+        Ok(())
+    }
+    
+    /// Load project file
+    pub fn load_project_file(&mut self, filepath: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let project_data = std::fs::read_to_string(filepath)?;
+        self.frames = serde_json::from_str(&project_data)?;
+        self.current_frame = 0;
+        self.current_layer = 0;
+        println!("Project loaded from: {}", filepath);
+        Ok(())
+    }
+    
     // ...existing code...
 }

@@ -2,6 +2,59 @@ use eframe::egui;
 use std::time::Instant;
 use rand::Rng;
 
+// Custom serialization for egui::Color32
+mod color32_serde {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use eframe::egui::Color32;
+
+    pub fn serialize<S>(color: &Color32, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let rgba = [color.r(), color.g(), color.b(), color.a()];
+        rgba.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Color32, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let rgba: [u8; 4] = <[u8; 4]>::deserialize(deserializer)?;
+        Ok(Color32::from_rgba_unmultiplied(rgba[0], rgba[1], rgba[2], rgba[3]))
+    }
+}
+
+// Custom serialization for Vec<Vec<Color32>>
+mod grid_serde {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use eframe::egui::Color32;
+
+    pub fn serialize<S>(grid: &Vec<Vec<Color32>>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let rgba_grid: Vec<Vec<[u8; 4]>> = grid.iter()
+            .map(|row| row.iter()
+                .map(|color| [color.r(), color.g(), color.b(), color.a()])
+                .collect())
+            .collect();
+        rgba_grid.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<Vec<Color32>>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let rgba_grid: Vec<Vec<[u8; 4]>> = Vec::deserialize(deserializer)?;
+        let grid = rgba_grid.into_iter()
+            .map(|row| row.into_iter()
+                .map(|rgba| Color32::from_rgba_unmultiplied(rgba[0], rgba[1], rgba[2], rgba[3]))
+                .collect())
+            .collect();
+        Ok(grid)
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Tool {
     Pencil,
@@ -150,7 +203,7 @@ impl ToolAnimation {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum ExportFormat {
     PNG,
     JPG,
@@ -171,11 +224,12 @@ pub enum ExportFormat {
     FLI,
 }
 
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Layer {
     pub name: String,
     pub visible: bool,
     pub opacity: f32,
+    #[serde(with = "grid_serde")]
     pub grid: Vec<Vec<egui::Color32>>,
 }
 
@@ -204,7 +258,7 @@ impl Default for Layer {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Frame {
     pub layers: Vec<Layer>,
 }
